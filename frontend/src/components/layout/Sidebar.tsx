@@ -8,6 +8,7 @@ import {
   ShoppingBag,
   LogOut,
   Baby,
+  Activity,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { useAlertStore } from "../../store/alertStore";
@@ -20,6 +21,7 @@ const navItems = [
   { to: "/controls", label: "Controls", icon: Settings2 },
   { to: "/alerts", label: "Alerts", icon: Bell },
   { to: "/orders", label: "Orders", icon: ShoppingBag },
+  { to: "/activity", label: "Activity", icon: Activity },
 ];
 
 export default function Sidebar() {

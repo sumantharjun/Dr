@@ -1,8 +1,9 @@
+import asyncio
 import json
-from datetime import datetime
-from typing import List
+import logging
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -10,9 +11,17 @@ from app.models.device import Device
 from app.models.user import User
 from app.schemas.device import DeviceCommand, DeviceCreate, DeviceOut, DeviceWithKeyOut
 from app.utils.dependencies import get_current_user
+from app.utils.security import decode_token
+from app.utils.timezone import now_ist
 from app.websocket.manager import manager
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/devices", tags=["devices"])
+
+VALID_COMMANDS = {"start_wash", "stop_wash", "dispense", "stop_dispense", "reboot", "status"}
+ALLOWED_WS_EVENT_TYPES = {"wash_progress", "dispense_progress", "alert", "status", "metric", "weight_report"}
+WS_IDLE_TIMEOUT = 300  # 5 min — device must send something or server pings
 
 
 @router.get("/", response_model=List[DeviceOut])
@@ -80,7 +89,7 @@ def rotate_api_key(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Regenerate the device API key. Returns new key — store it in device firmware."""
+    """Regenerate the device API key. Flash the new key to device firmware immediately."""
     import secrets
     device = db.query(Device).filter(
         Device.id == device_id, Device.user_id == current_user.id
@@ -100,6 +109,11 @@ async def send_command(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if body.command not in VALID_COMMANDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid command '{body.command}'. Allowed: {sorted(VALID_COMMANDS)}",
+        )
     device = db.query(Device).filter(
         Device.id == device_id, Device.user_id == current_user.id
     ).first()
@@ -107,31 +121,109 @@ async def send_command(
         raise HTTPException(status_code=404, detail="Device not found")
     await manager.broadcast_to_device(
         str(device_id),
-        {"type": "command", "command": body.command, "payload": body.payload},
+        {"type": "command", "command": body.command, "payload": body.payload or {}},
     )
     return {"status": "command_sent"}
 
 
 @router.websocket("/ws/{device_id}")
-async def websocket_endpoint(websocket: WebSocket, device_id: str, db: Session = Depends(get_db)):
-    await manager.connect(websocket, device_id)
-    device = db.query(Device).filter(Device.id == int(device_id)).first()
-    if device:
-        device.status = "online"
-        device.last_seen = datetime.utcnow()
-        db.commit()
+async def websocket_endpoint(
+    websocket: WebSocket,
+    device_id: int,
+    token: Optional[str] = Query(default=None),    # App clients use JWT
+    api_key: Optional[str] = Query(default=None),  # Device firmware uses API key
+    db: Session = Depends(get_db),
+):
+    """
+    Accepts connections from two client types:
+      - Mobile/web app:      ?token=<JWT>
+      - Device firmware:     ?api_key=<device_api_key>
+    """
+    device: Optional[Device] = None
+
+    if api_key:
+        # ── Device firmware auth via API key ──────────────────────────────
+        device = db.query(Device).filter(
+            Device.id == device_id,
+            Device.api_key == api_key,
+        ).first()
+        if not device:
+            await websocket.close(code=4003)
+            return
+
+    elif token:
+        # ── App client auth via JWT ───────────────────────────────────────
+        payload = decode_token(token)
+        if payload is None:
+            await websocket.close(code=4001)
+            return
+        try:
+            user_id = int(payload["sub"])
+        except (KeyError, ValueError):
+            await websocket.close(code=4001)
+            return
+        device = db.query(Device).filter(
+            Device.id == device_id, Device.user_id == user_id
+        ).first()
+        if not device:
+            await websocket.close(code=4003)
+            return
+
+    else:
+        await websocket.close(code=4001)
+        return
+
+    await manager.connect(websocket, str(device_id))
+    device.status = "online"
+    device.last_seen = now_ist()
+    db.commit()
+    logger.info("WebSocket connected: device %s (auth=%s)", device_id, "api_key" if api_key else "jwt")
+
     try:
         while True:
-            data = await websocket.receive_text()
-            event = json.loads(data)
-            # Update device last_seen on any event
-            if device:
-                device.last_seen = datetime.utcnow()
-                db.commit()
-            # Broadcast event to all listeners on this device channel
-            await manager.broadcast_to_device(device_id, event)
+            try:
+                raw = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=float(WS_IDLE_TIMEOUT),
+                )
+            except asyncio.TimeoutError:
+                try:
+                    await websocket.send_text(json.dumps({"type": "ping"}))
+                except Exception:
+                    break
+                continue
+
+            try:
+                event = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                logger.warning("Malformed JSON from device %s — ignored", device_id)
+                continue
+
+            if not isinstance(event, dict) or "type" not in event:
+                logger.warning("Invalid event structure from device %s — ignored", device_id)
+                continue
+
+            if event["type"] not in ALLOWED_WS_EVENT_TYPES:
+                logger.warning(
+                    "Unknown event type '%s' from device %s — ignored",
+                    event.get("type"), device_id,
+                )
+                continue
+
+            device.last_seen = now_ist()
+            db.commit()
+
+            await manager.broadcast_to_device(str(device_id), event)
+
     except WebSocketDisconnect:
-        manager.disconnect(websocket, device_id)
-        if device:
+        pass
+    except Exception as e:
+        logger.error("WebSocket error for device %s: %s", device_id, e)
+    finally:
+        manager.disconnect(websocket, str(device_id))
+        try:
             device.status = "offline"
             db.commit()
+        except Exception:
+            pass
+        logger.info("WebSocket disconnected: device %s", device_id)

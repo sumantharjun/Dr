@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line,
 } from "recharts";
-import { Plus, Droplets, Clock } from "lucide-react";
+import { Plus, Droplets, Clock, Scale } from "lucide-react";
 import api from "../services/api";
 import { Device, FeedingAnalytics, FeedingLog, FeedingSchedule } from "../types";
 import { format, formatDistanceToNow } from "date-fns";
+import { useToastStore } from "../store/toastStore";
+import { useWsEventStore } from "../store/wsEventStore";
 
 export default function FeedingPage() {
   const [logs, setLogs] = useState<FeedingLog[]>([]);
@@ -23,11 +25,11 @@ export default function FeedingPage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchAll();
-  }, []);
+  const { addToast } = useToastStore();
+  const weightReadings = useWsEventStore((s) => s.weightReadings);
+  const lastFeedingEvent = useWsEventStore((s) => s.lastFeedingEvent);
 
-  async function fetchAll() {
+  const fetchAll = useCallback(async () => {
     const [logsRes, analyticsRes, scheduleRes, devicesRes] = await Promise.all([
       api.get("/feeding/logs"),
       api.get("/feeding/analytics?days=7"),
@@ -38,7 +40,20 @@ export default function FeedingPage() {
     setAnalytics(analyticsRes.data);
     setSchedule(scheduleRes.data);
     setDevices(devicesRes.data);
-  }
+  }, []);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  // Auto-refresh when device posts a new feeding log
+  useEffect(() => {
+    const hasEvent = Object.values(lastFeedingEvent).some(Boolean);
+    if (hasEvent) {
+      fetchAll();
+      addToast("New feeding logged by device", "info");
+    }
+  }, [JSON.stringify(lastFeedingEvent)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -52,11 +67,28 @@ export default function FeedingPage() {
         feed_time: new Date(form.feed_time).toISOString(),
       });
       setShowForm(false);
+      setForm({
+        device_id: "",
+        milk_consumed_ml: "",
+        method: "manual",
+        notes: "",
+        feed_time: new Date().toISOString().slice(0, 16),
+      });
+      addToast("Feeding log saved", "success");
       fetchAll();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      addToast(msg || "Failed to save feeding log", "error");
     } finally {
       setSubmitting(false);
     }
   }
+
+  // Find any live weight reading across devices
+  const liveWeightEntry = Object.entries(weightReadings).find(([, v]) => v !== null);
+  const liveWeight = liveWeightEntry ? liveWeightEntry[1] : null;
+  const liveDeviceId = liveWeightEntry ? Number(liveWeightEntry[0]) : null;
+  const liveDevice = devices.find((d) => d.id === liveDeviceId);
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -67,43 +99,62 @@ export default function FeedingPage() {
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg"
+          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" /> Log Feeding
         </button>
       </div>
 
-      {/* Schedule card */}
+      {/* Live weight reading banner */}
+      {liveWeight !== null && (
+        <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 mb-4 flex items-center gap-3">
+          <Scale className="w-5 h-5 text-sky-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-sky-800">
+              Live scale reading{liveDevice ? ` — ${liveDevice.device_name}` : ""}
+            </p>
+            <p className="text-xl font-bold text-sky-900">{liveWeight.toFixed(1)} g</p>
+          </div>
+        </div>
+      )}
+
+      {/* Schedule cards */}
       {schedule && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <ScheduleCard
             icon={Droplets}
             label="Last Feed"
-            value={schedule.last_feed_time
-              ? formatDistanceToNow(new Date(schedule.last_feed_time), { addSuffix: true })
-              : "No data"}
+            value={
+              schedule.last_feed_time
+                ? formatDistanceToNow(new Date(schedule.last_feed_time), { addSuffix: true })
+                : "No data"
+            }
             color="text-primary-600 bg-primary-50"
           />
           <ScheduleCard
             icon={Clock}
             label="Time Since Last Feed"
-            value={schedule.minutes_since_last_feed != null
-              ? `${Math.floor(schedule.minutes_since_last_feed / 60)}h ${schedule.minutes_since_last_feed % 60}m`
-              : "—"}
+            value={
+              schedule.minutes_since_last_feed != null
+                ? `${Math.floor(schedule.minutes_since_last_feed / 60)}h ${schedule.minutes_since_last_feed % 60}m`
+                : "—"
+            }
             color="text-blue-600 bg-blue-50"
           />
           <ScheduleCard
             icon={Clock}
             label="Next Feed Due"
-            value={schedule.next_feed_due
-              ? formatDistanceToNow(new Date(schedule.next_feed_due), { addSuffix: true })
-              : "—"}
+            value={
+              schedule.next_feed_due
+                ? formatDistanceToNow(new Date(schedule.next_feed_due), { addSuffix: true })
+                : "—"
+            }
             color="text-green-600 bg-green-50"
           />
         </div>
       )}
 
-      {/* Analytics */}
+      {/* Analytics charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-semibold text-gray-900 mb-4">Daily Milk Intake (ml) — Last 7 Days</h2>
@@ -112,7 +163,7 @@ export default function FeedingPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
               <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v: any) => [`${v} ml`, "Intake"]} />
+              <Tooltip formatter={(v: unknown) => [`${v} ml`, "Intake"]} />
               <Bar dataKey="total_ml" fill="#a62cd4" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -124,16 +175,16 @@ export default function FeedingPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
               <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-              <Tooltip formatter={(v: any) => [v, "Feeds"]} />
+              <Tooltip formatter={(v: number) => [v, "Feeds"]} />
               <Line type="monotone" dataKey="feed_count" stroke="#a62cd4" strokeWidth={2} dot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Manual Entry Form */}
+      {/* Manual entry modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
             <h2 className="font-bold text-lg text-gray-900 mb-4">Log Feeding</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -193,23 +244,23 @@ export default function FeedingPage() {
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   rows={2}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none resize-none"
-                  placeholder="Optional notes..."
+                  placeholder="Optional notes…"
                 />
               </div>
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="flex-1 border border-gray-300 rounded-lg py-2.5 text-sm hover:bg-gray-50"
+                  className="flex-1 border border-gray-300 rounded-lg py-2.5 text-sm hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 bg-primary-600 text-white rounded-lg py-2.5 text-sm hover:bg-primary-700 disabled:opacity-50"
+                  className="flex-1 bg-primary-600 text-white rounded-lg py-2.5 text-sm hover:bg-primary-700 disabled:opacity-50 transition-colors"
                 >
-                  {submitting ? "Saving..." : "Save"}
+                  {submitting ? "Saving…" : "Save"}
                 </button>
               </div>
             </form>
@@ -217,7 +268,7 @@ export default function FeedingPage() {
         </div>
       )}
 
-      {/* Feeding Log Table */}
+      {/* Feeding history table */}
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="px-5 py-4 border-b border-gray-200">
           <h2 className="font-semibold text-gray-900">Feeding History</h2>
@@ -240,9 +291,9 @@ export default function FeedingPage() {
               </thead>
               <tbody>
                 {logs.map((log) => (
-                  <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-3 text-gray-700">
-                      {format(new Date(log.feed_time), "MMM d, h:mm a")}
+                      {format(new Date(log.feed_time), "dd MMM, HH:mm")}
                     </td>
                     <td className="px-5 py-3 font-medium text-gray-900">
                       {log.milk_consumed_ml != null ? `${log.milk_consumed_ml} ml` : "—"}
@@ -262,7 +313,9 @@ export default function FeedingPage() {
   );
 }
 
-function ScheduleCard({ icon: Icon, label, value, color }: any) {
+function ScheduleCard({ icon: Icon, label, value, color }: {
+  icon: React.ElementType; label: string; value: string; color: string;
+}) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
@@ -281,7 +334,7 @@ function MethodBadge({ method }: { method: string }) {
     device: "bg-primary-100 text-primary-700",
     manual: "bg-blue-100 text-blue-700",
     breast: "bg-pink-100 text-pink-700",
-    other: "bg-gray-100 text-gray-600",
+    other:  "bg-gray-100 text-gray-600",
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[method] || map.other}`}>

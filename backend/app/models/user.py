@@ -1,9 +1,8 @@
-from datetime import datetime
-
 from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.utils.timezone import now_ist
 
 
 class User(Base):
@@ -13,7 +12,7 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     full_name = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_ist)
 
     devices = relationship("Device", back_populates="owner", cascade="all, delete")
     feeding_logs = relationship("FeedingLog", back_populates="user")

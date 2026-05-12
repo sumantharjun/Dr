@@ -1,8 +1,9 @@
-from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+
+from app.utils.timezone import now_ist
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -16,6 +17,7 @@ from app.websocket.manager import manager
 router = APIRouter(prefix="/washing", tags=["washing"])
 
 VALID_MODES = {"full_cycle", "wash", "deep_clean", "dispense"}
+VALID_STATUSES = {"pending", "running", "completed", "failed"}
 
 
 class WashProgressUpdate(BaseModel):
@@ -31,7 +33,7 @@ async def start_washing(
     db: Session = Depends(get_db),
 ):
     if body.mode not in VALID_MODES:
-        raise HTTPException(status_code=400, detail=f"Invalid mode. Choose from: {VALID_MODES}")
+        raise HTTPException(status_code=400, detail=f"Invalid mode. Choose from: {sorted(VALID_MODES)}")
 
     device = db.query(Device).filter(
         Device.id == body.device_id, Device.user_id == current_user.id
@@ -58,6 +60,11 @@ async def update_wash_progress(
     db: Session = Depends(get_db),
 ):
     """Device firmware calls this to report wash cycle progress."""
+    if body.status not in VALID_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Choose from: {sorted(VALID_STATUSES)}")
+    if not (0 <= body.progress_pct <= 100):
+        raise HTTPException(status_code=400, detail="progress_pct must be 0–100")
+
     cycle = db.query(WashingCycle).filter(
         WashingCycle.id == body.cycle_id,
         WashingCycle.device_id == device.id,
@@ -68,7 +75,7 @@ async def update_wash_progress(
     cycle.status = body.status
     cycle.progress_pct = body.progress_pct
     if body.status == "completed":
-        cycle.completed_at = datetime.utcnow()
+        cycle.completed_at = now_ist()
         cycle.progress_pct = 100
 
     db.commit()
@@ -88,17 +95,15 @@ async def update_wash_progress(
 
 @router.get("/history", response_model=List[WashingCycleOut])
 def washing_history(
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    device_ids = [
-        d.id for d in db.query(Device).filter(Device.user_id == current_user.id).all()
-    ]
     return (
         db.query(WashingCycle)
-        .filter(WashingCycle.device_id.in_(device_ids))
+        .join(Device, WashingCycle.device_id == Device.id)
+        .filter(Device.user_id == current_user.id)
         .order_by(WashingCycle.started_at.desc())
         .offset(skip)
         .limit(limit)

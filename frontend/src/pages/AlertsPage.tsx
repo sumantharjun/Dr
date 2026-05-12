@@ -1,60 +1,46 @@
-import { useEffect, useCallback, useState } from "react";
+import { useEffect } from "react";
 import { Bell, CheckCheck, Trash2, AlertTriangle, Info, Zap } from "lucide-react";
 import api from "../services/api";
 import { useAlertStore } from "../store/alertStore";
 import { useToastStore } from "../store/toastStore";
-import { useDeviceSocket } from "../hooks/useDeviceSocket";
-import { Device } from "../types";
 import { formatDistanceToNow } from "date-fns";
 
 export default function AlertsPage() {
-  const { alerts, setAlerts, markRead, removeAlert, addAlert } = useAlertStore();
+  const { alerts, setAlerts, markRead, removeAlert } = useAlertStore();
   const { addToast } = useToastStore();
-  const [devices, setDevices] = useState<Device[]>([]);
 
   useEffect(() => {
-    api.get("/alerts/").then((r) => setAlerts(r.data));
-    api.get("/devices/").then((r) => setDevices(r.data));
-  }, []);
-
-  // Subscribe to the first device's WebSocket for real-time alerts
-  const firstDeviceId = devices.length > 0 ? devices[0].id : null;
-
-  const handleSocketMessage = useCallback((event: Record<string, unknown>) => {
-    if (event.type === "alert") {
-      const newAlert = {
-        id: Date.now(),
-        device_id: firstDeviceId ?? 0,
-        alert_type: event.alert_type as string,
-        message: event.message as string,
-        severity: event.severity as "info" | "warning" | "error" | "critical",
-        is_read: false,
-        created_at: new Date().toISOString(),
-      };
-      addAlert(newAlert);
-      addToast(event.message as string, event.severity === "critical" || event.severity === "error" ? "error" : "warning");
-      if (Notification.permission === "granted") {
-        new Notification("BabyFeeder Alert", { body: event.message as string });
-      }
-    }
-  }, [addAlert, addToast, firstDeviceId]);
-
-  useDeviceSocket(firstDeviceId, handleSocketMessage);
+    // Sync with server on every visit so temp IDs from WS are replaced with real ones
+    api.get("/alerts/").then((r) => setAlerts(r.data)).catch(() => {});
+  }, [setAlerts]);
 
   async function handleRead(id: number) {
-    await api.put(`/alerts/${id}/read`);
-    markRead(id);
+    try {
+      await api.put(`/alerts/${id}/read`);
+      markRead(id);
+    } catch {
+      addToast("Failed to mark alert as read", "error");
+    }
   }
 
   async function handleDelete(id: number) {
-    await api.delete(`/alerts/${id}`);
-    removeAlert(id);
+    try {
+      await api.delete(`/alerts/${id}`);
+      removeAlert(id);
+    } catch {
+      addToast("Failed to dismiss alert", "error");
+    }
   }
 
   async function markAllRead() {
     const unread = alerts.filter((a) => !a.is_read);
-    await Promise.all(unread.map((a) => api.put(`/alerts/${a.id}/read`)));
-    unread.forEach((a) => markRead(a.id));
+    if (unread.length === 0) return;
+    try {
+      await Promise.all(unread.map((a) => api.put(`/alerts/${a.id}/read`)));
+      unread.forEach((a) => markRead(a.id));
+    } catch {
+      addToast("Failed to mark all as read", "error");
+    }
   }
 
   const unreadCount = alerts.filter((a) => !a.is_read).length;
@@ -65,7 +51,9 @@ export default function AlertsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Alerts</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {unreadCount > 0 ? `${unreadCount} unread alert${unreadCount > 1 ? "s" : ""}` : "All caught up"}
+            {unreadCount > 0
+              ? `${unreadCount} unread alert${unreadCount > 1 ? "s" : ""}`
+              : "All caught up"}
           </p>
         </div>
         {unreadCount > 0 && (
@@ -98,10 +86,14 @@ export default function AlertsPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${severityBadge(alert.severity)}`}>
+                  <span
+                    className={`text-xs font-medium px-2 py-0.5 rounded-full ${severityBadge(alert.severity)}`}
+                  >
                     {alert.severity}
                   </span>
-                  <span className="text-xs text-gray-400 uppercase tracking-wide">{alert.alert_type.replace(/_/g, " ")}</span>
+                  <span className="text-xs text-gray-400 uppercase tracking-wide">
+                    {alert.alert_type.replace(/_/g, " ")}
+                  </span>
                 </div>
                 <p className={`text-sm ${alert.is_read ? "text-gray-500" : "text-gray-800 font-medium"}`}>
                   {alert.message}
@@ -143,9 +135,20 @@ function SeverityIcon({ severity }: { severity: string }) {
 }
 
 function severityIconColor(severity: string) {
-  return { info: "text-blue-500", warning: "text-yellow-500", error: "text-red-500", critical: "text-red-700" }[severity] || "text-gray-400";
+  return (
+    { info: "text-blue-500", warning: "text-yellow-500", error: "text-red-500", critical: "text-red-700" }[
+      severity
+    ] || "text-gray-400"
+  );
 }
 
 function severityBadge(severity: string) {
-  return { info: "bg-blue-100 text-blue-700", warning: "bg-yellow-100 text-yellow-700", error: "bg-red-100 text-red-700", critical: "bg-red-200 text-red-800" }[severity] || "bg-gray-100 text-gray-600";
+  return (
+    {
+      info: "bg-blue-100 text-blue-700",
+      warning: "bg-yellow-100 text-yellow-700",
+      error: "bg-red-100 text-red-700",
+      critical: "bg-red-200 text-red-800",
+    }[severity] || "bg-gray-100 text-gray-600"
+  );
 }

@@ -7,8 +7,9 @@ const MAX_RETRIES = 10;
 const BASE_DELAY_MS = 1000;
 
 /**
- * Connects to ws://.../devices/ws/{deviceId} and calls onMessage for each event.
- * Reconnects automatically with exponential backoff if the connection drops.
+ * Connects to ws://.../devices/ws/{deviceId}?token=<jwt> and calls onMessage
+ * for each valid event. Reconnects with exponential back-off if the connection
+ * drops. Passes the stored JWT as a query parameter for server-side auth.
  */
 export function useDeviceSocket(deviceId: number | null, onMessage: MessageHandler) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -20,19 +21,24 @@ export function useDeviceSocket(deviceId: number | null, onMessage: MessageHandl
   const connect = useCallback(() => {
     if (!deviceId) return;
 
-    const ws = new WebSocket(`${WS_BASE}/devices/ws/${deviceId}`);
+    const token = localStorage.getItem("access_token");
+    if (!token) return; // No token — do not attempt WebSocket connection
+
+    const url = `${WS_BASE}/devices/ws/${deviceId}?token=${encodeURIComponent(token)}`;
+    const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      retryRef.current = 0; // reset backoff on successful connection
+      retryRef.current = 0;
     };
 
     ws.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
+        if (data?.type === "ping") return; // Ignore server keep-alive pings
         onMessageRef.current(data);
       } catch {
-        // ignore malformed messages
+        // Ignore malformed messages
       }
     };
 

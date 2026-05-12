@@ -10,7 +10,7 @@ declare module "axios" {
 }
 
 const api = axios.create({
-  baseURL: "http://127.0.0.1:8000",
+  baseURL: import.meta.env.VITE_API_URL || "https://unova-api.vsngroups.com",
 });
 
 api.interceptors.request.use((config) => {
@@ -32,7 +32,7 @@ api.interceptors.response.use(
       return Promise.reject(err);
     }
 
-    // Retry on network errors or 5xx responses
+    // Do not retry client errors (4xx) — only network errors or 5xx
     const isRetryable =
       !err.response || (err.response.status >= 500 && err.response.status < 600);
 

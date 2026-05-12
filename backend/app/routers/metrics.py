@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,6 @@ from app.utils.dependencies import get_current_user, get_device_by_api_key
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
-# Baseline: a standard bottle sterilizer uses ~1.0 kWh and ~5L per cycle
 BASELINE_POWER_KWH = 1.0
 BASELINE_WATER_LITERS = 5.0
 
@@ -27,6 +26,8 @@ def submit_metrics(
     """Called by device firmware after each wash cycle to report actual consumption."""
     if device.id != body.device_id:
         raise HTTPException(status_code=403, detail="API key does not match device_id")
+    if body.power_kwh < 0 or body.water_liters < 0:
+        raise HTTPException(status_code=400, detail="Metric values must be non-negative")
     record = DeviceMetrics(
         device_id=body.device_id,
         cycle_id=body.cycle_id,
@@ -41,16 +42,14 @@ def submit_metrics(
 
 @router.get("/history", response_model=List[MetricsOut])
 def metrics_history(
-    limit: int = 30,
+    limit: int = Query(30, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    device_ids = [
-        d.id for d in db.query(Device).filter(Device.user_id == current_user.id).all()
-    ]
     return (
         db.query(DeviceMetrics)
-        .filter(DeviceMetrics.device_id.in_(device_ids))
+        .join(Device, DeviceMetrics.device_id == Device.id)
+        .filter(Device.user_id == current_user.id)
         .order_by(DeviceMetrics.recorded_at.desc())
         .limit(limit)
         .all()
@@ -62,9 +61,7 @@ def metrics_summary(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    device_ids = [
-        d.id for d in db.query(Device).filter(Device.user_id == current_user.id).all()
-    ]
+    device_ids = [d.id for d in db.query(Device).filter(Device.user_id == current_user.id).all()]
     row = db.query(
         func.count(DeviceMetrics.id).label("total_cycles"),
         func.coalesce(func.sum(DeviceMetrics.power_kwh), 0).label("total_power"),

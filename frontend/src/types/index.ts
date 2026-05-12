@@ -36,7 +36,6 @@ export interface FeedingAnalytics {
 export interface FeedingSchedule {
   last_feed_time: string | null;
   minutes_since_last_feed: number | null;
-  recommended_interval_hours: number;
   next_feed_due: string | null;
 }
 
@@ -95,4 +94,12 @@ export interface Order {
   total_price: number;
   created_at: string;
   items: OrderItem[];
+}
+
+export interface ActivityLog {
+  id: number;
+  device_id: number;
+  event_type: string;
+  description: string | null;
+  recorded_at: string;
 }

@@ -14,14 +14,16 @@ from app.websocket.manager import manager
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 
+def _owned_device_ids(user: User, db: Session) -> list[int]:
+    return [d.id for d in db.query(Device).filter(Device.user_id == user.id).all()]
+
+
 @router.get("/", response_model=List[AlertOut])
 def get_alerts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    device_ids = [
-        d.id for d in db.query(Device).filter(Device.user_id == current_user.id).all()
-    ]
+    device_ids = _owned_device_ids(current_user, db)
     return (
         db.query(DeviceAlert)
         .filter(DeviceAlert.device_id.in_(device_ids))
@@ -48,7 +50,6 @@ async def create_alert(
     db.add(alert)
     db.commit()
     db.refresh(alert)
-    # Push to WebSocket clients watching this device
     await manager.broadcast_to_device(
         str(body.device_id),
         {"type": "alert", "alert_type": body.alert_type, "message": body.message, "severity": body.severity},
@@ -62,7 +63,11 @@ def mark_read(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    alert = db.query(DeviceAlert).filter(DeviceAlert.id == alert_id).first()
+    device_ids = _owned_device_ids(current_user, db)
+    alert = db.query(DeviceAlert).filter(
+        DeviceAlert.id == alert_id,
+        DeviceAlert.device_id.in_(device_ids),
+    ).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
     alert.is_read = True
@@ -77,7 +82,11 @@ def delete_alert(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    alert = db.query(DeviceAlert).filter(DeviceAlert.id == alert_id).first()
+    device_ids = _owned_device_ids(current_user, db)
+    alert = db.query(DeviceAlert).filter(
+        DeviceAlert.id == alert_id,
+        DeviceAlert.device_id.in_(device_ids),
+    ).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
     db.delete(alert)

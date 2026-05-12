@@ -7,9 +7,11 @@ Rules (based on standard newborn guidelines):
   3. FREQUENT    — more than 5 feeds in the last 3 hours
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy.orm import Session
+
+from app.utils.timezone import now_ist
 
 from app.models.alert import DeviceAlert
 from app.models.feeding import FeedingLog
@@ -17,7 +19,7 @@ from app.websocket.manager import manager
 
 
 async def analyze_and_alert(user_id: int, device_id: int | None, db: Session) -> None:
-    now = datetime.utcnow()
+    now = now_ist()
 
     # -- Rule 1: Overdue feed --
     last = (
@@ -77,7 +79,7 @@ async def _create_alert(
         return  # Can't create device alert without a device
 
     # Avoid duplicate alerts of the same type within the last 2 hours
-    two_hours_ago = datetime.utcnow() - timedelta(hours=2)
+    two_hours_ago = now_ist() - timedelta(hours=2)
     existing = (
         db.query(DeviceAlert)
         .filter(

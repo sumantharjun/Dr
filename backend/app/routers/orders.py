@@ -1,6 +1,7 @@
-from typing import List
+from typing import List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -10,6 +11,10 @@ from app.schemas.order import OrderCreate, OrderOut, ProductOut
 from app.utils.dependencies import get_current_user
 
 router = APIRouter(prefix="/orders", tags=["orders"])
+
+
+class OrderStatusUpdate(BaseModel):
+    status: Literal["cancelled"]
 
 
 @router.get("/products", response_model=List[ProductOut])
@@ -26,13 +31,27 @@ def place_order(
     total = 0.0
     items = []
     for item in body.items:
-        product = db.query(Product).filter(Product.id == item.product_id).first()
+        if item.quantity < 1:
+            raise HTTPException(status_code=400, detail="Quantity must be at least 1")
+        # SELECT FOR UPDATE prevents concurrent orders from overselling
+        product = (
+            db.query(Product)
+            .filter(Product.id == item.product_id)
+            .with_for_update()
+            .first()
+        )
         if not product:
             raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
         if product.stock < item.quantity:
-            raise HTTPException(status_code=400, detail=f"Insufficient stock for {product.name}")
+            raise HTTPException(status_code=400, detail=f"Insufficient stock for '{product.name}'")
         total += product.price * item.quantity
-        items.append(OrderItem(product_id=item.product_id, quantity=item.quantity, unit_price=product.price))
+        items.append(
+            OrderItem(
+                product_id=item.product_id,
+                quantity=item.quantity,
+                unit_price=product.price,
+            )
+        )
         product.stock -= item.quantity
 
     order = Order(user_id=current_user.id, status="pending", total_price=round(total, 2))
@@ -70,4 +89,39 @@ def get_order(
     ).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    return order
+
+
+@router.patch("/{order_id}/cancel", response_model=OrderOut)
+def cancel_order(
+    order_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cancel a pending or confirmed order and restore stock atomically."""
+    order = (
+        db.query(Order)
+        .filter(Order.id == order_id, Order.user_id == current_user.id)
+        .with_for_update()
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status not in ("pending", "confirmed"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel an order that is already '{order.status}'",
+        )
+    for item in order.items:
+        product = (
+            db.query(Product)
+            .filter(Product.id == item.product_id)
+            .with_for_update()
+            .first()
+        )
+        if product:
+            product.stock += item.quantity
+    order.status = "cancelled"
+    db.commit()
+    db.refresh(order)
     return order
