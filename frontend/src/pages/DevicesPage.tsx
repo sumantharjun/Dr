@@ -188,16 +188,18 @@ export default function DevicesPage() {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Devices</h1>
-          <p className="text-gray-500 text-sm mt-1">Manage your paired smart feeding devices</p>
+          <h1 className="text-2xl font-bold text-gray-900">Your Device</h1>
+          <p className="text-gray-500 text-sm mt-1">Manage your paired smart feeding device</p>
         </div>
-        <button
-          onClick={() => { setPairing("step1"); setError(""); }}
-          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Pair Device
-        </button>
+        {devices.length === 0 && (
+          <button
+            onClick={() => { setPairing("step1"); setError(""); }}
+            className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Pair Device
+          </button>
+        )}
       </div>
 
       {/* ── Pairing Wizard ── */}
@@ -400,11 +402,11 @@ export default function DevicesPage() {
         </div>
       )}
 
-      {/* Device list */}
+      {/* Device card */}
       {devices.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <Cpu className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-          <p className="text-gray-500">No devices paired yet. Click "Pair Device" to get started.</p>
+          <p className="text-gray-500">No device paired yet. Click "Pair Device" to get started.</p>
         </div>
       ) : (
         <div className="grid gap-4">

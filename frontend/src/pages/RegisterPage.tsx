@@ -1,11 +1,13 @@
 import { useState, FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Baby } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import api from "../services/api";
 import { useAuthStore } from "../store/authStore";
+import Mascot from "../components/Mascot";
 
 export default function RegisterPage() {
   const [form, setForm] = useState({ email: "", full_name: "", password: "" });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { setAuth } = useAuthStore();
@@ -27,12 +29,22 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-purple-100">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <Baby className="w-12 h-12 text-primary-600 mb-3" />
-          <h1 className="text-2xl font-bold text-gray-900">Create Account</h1>
-          <p className="text-gray-500 text-sm mt-1">Start monitoring your baby's feeding</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cream-50 via-cream-100 to-sky-brand/30 p-4">
+      <div className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md">
+        <div className="flex flex-col items-center mb-6">
+          <img
+            src="/mascots/UNOVA_Logo.png"
+            alt="UNOVA"
+            className="w-64 h-auto mb-4"
+          />
+          <Mascot variant="sleeping" size={170} />
+          <h2 className="text-xl font-bold text-gray-900 mt-2">Create Account</h2>
+          <p className="text-xs tracking-widest text-primary-600 font-medium mt-1">
+            SAFE · TRUST · PRECISE
+          </p>
+          <p className="text-gray-500 text-sm mt-3">
+            Start monitoring your baby's feeding
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -63,15 +75,26 @@ export default function RegisterPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              required
-              minLength={6}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="Min. 6 characters"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+                minLength={8}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="Min. 8 characters"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                tabIndex={-1}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
           <button
             type="submit"

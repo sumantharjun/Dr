@@ -16,4 +16,4 @@ class DeviceMetrics(Base):
     water_liters = Column(Float, nullable=False, default=0.0)
     recorded_at = Column(DateTime, default=now_ist)
 
-    device = relationship("Device")
+    device = relationship("Device", back_populates="metrics")

@@ -23,7 +23,10 @@ function routeEvent(deviceId: number, event: Record<string, unknown>) {
         progress: event.progress_pct as number,
         status: event.status as string,
       });
-      if (event.status === "completed") {
+      if (event.status === "pending" && event.initiated_by === "device") {
+        const mode = (event.mode as string | undefined)?.replace(/_/g, " ") ?? "Wash";
+        toastStore.addToast(`${mode} started from device`, "info");
+      } else if (event.status === "completed") {
         toastStore.addToast("Wash cycle completed!", "success");
       } else if (event.status === "failed") {
         toastStore.addToast("Wash cycle failed. Check device.", "error");
@@ -36,7 +39,12 @@ function routeEvent(deviceId: number, event: Record<string, unknown>) {
         progress: event.progress_pct as number,
         status: event.status as string,
       });
-      if (event.status === "completed") {
+      if (event.status === "pending" && event.initiated_by === "device") {
+        const vol = event.volume_ml as number | undefined;
+        const temp = event.temperature_c as number | undefined;
+        const detail = vol != null && temp != null ? ` (${vol}ml @ ${temp}°C)` : "";
+        toastStore.addToast(`Dispense started from device${detail}`, "info");
+      } else if (event.status === "completed") {
         toastStore.addToast("Milk dispensed successfully!", "success");
       } else if (event.status === "failed") {
         toastStore.addToast("Dispense failed. Check device.", "error");

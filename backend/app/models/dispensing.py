@@ -16,6 +16,9 @@ class MilkDispenseLog(Base):
         Enum("pending", "dispensing", "completed", "failed"), default="pending"
     )
     progress_pct = Column(Integer, default=0)  # 0–100
+    # Who initiated the dispense — app user via /dispensing/, or the device
+    # itself via /dispensing/device-start (physical controls on the machine).
+    initiated_by = Column(Enum("app", "device"), nullable=False, default="app")
     created_at = Column(DateTime, default=now_ist)
     completed_at = Column(DateTime, nullable=True)
 

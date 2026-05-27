@@ -5,6 +5,8 @@ import api from "../services/api";
 import { Device, FeedingSchedule, DeviceAlert } from "../types";
 import { formatDistanceToNow } from "date-fns";
 import { useAuthStore } from "../store/authStore";
+import { useBabyStore } from "../store/babyStore";
+import Mascot from "../components/Mascot";
 
 interface MetricsSummary {
   total_cycles: number;
@@ -47,6 +49,7 @@ function StatCard({ icon: Icon, label, value, color, to }: {
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
+  const { baby } = useBabyStore();
   const [devices, setDevices] = useState<Device[]>([]);
   const [schedule, setSchedule] = useState<FeedingSchedule | null>(null);
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
@@ -62,16 +65,28 @@ export default function DashboardPage() {
     ]).finally(() => setLoading(false));
   }, []);
 
-  const onlineDevices = devices.filter((d) => d.status === "online").length;
+  const device = devices[0] ?? null;
+  const deviceLabel = !device
+    ? "Not paired"
+    : device.status === "online"
+    ? "Online"
+    : "Offline";
   const unreadAlerts = alerts.filter((a) => !a.is_read).length;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Good {getGreeting()}, {user?.full_name?.split(" ")[0]}
-        </h1>
-        <p className="text-gray-500 text-sm mt-1">Here's what's happening with your baby's feeding.</p>
+      <div className="mb-6 flex items-center gap-4">
+        <Mascot variant="auto" size={72} className="flex-shrink-0 hidden sm:block" />
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Good {getGreeting()}, {user?.full_name?.split(" ")[0]}
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            {baby?.name
+              ? `Here's what's happening with ${baby.name}.`
+              : "Here's what's happening with your baby's feeding."}
+          </p>
+        </div>
       </div>
 
       {/* Stats */}
@@ -87,9 +102,15 @@ export default function DashboardPage() {
           <>
             <StatCard
               icon={Cpu}
-              label="Devices Online"
-              value={`${onlineDevices}/${devices.length}`}
-              color="bg-blue-500"
+              label="Device"
+              value={deviceLabel}
+              color={
+                !device
+                  ? "bg-gray-400"
+                  : device.status === "online"
+                  ? "bg-green-500"
+                  : "bg-gray-400"
+              }
               to="/devices"
             />
             <StatCard
@@ -155,8 +176,8 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900">Devices</h2>
-            <Link to="/devices" className="text-sm text-primary-600 hover:underline">View all</Link>
+            <h2 className="font-semibold text-gray-900">Device</h2>
+            <Link to="/devices" className="text-sm text-primary-600 hover:underline">Manage</Link>
           </div>
           {loading ? (
             <div className="space-y-3">
@@ -173,14 +194,14 @@ export default function DashboardPage() {
           ) : devices.length === 0 ? (
             <div className="text-center py-8 text-gray-400">
               <Cpu className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No devices paired yet</p>
+              <p className="text-sm">No device paired yet</p>
               <Link to="/devices" className="text-primary-600 text-sm hover:underline mt-1 block">
-                Pair your first device
+                Pair your device
               </Link>
             </div>
           ) : (
             <ul className="space-y-3">
-              {devices.slice(0, 5).map((d) => (
+              {devices.slice(0, 1).map((d) => (
                 <li key={d.id} className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-800">{d.device_name}</p>

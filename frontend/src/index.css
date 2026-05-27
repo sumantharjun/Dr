@@ -2,8 +2,49 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theme palettes — switch by setting `data-theme="blue"` or `data-theme="pink"`
+ * on the <html> element (see src/main.tsx and src/store/themeStore.ts).
+ *
+ * Blue palette is anchored on the UNOSOL brochure colour #B2E6F3.
+ * Pink palette is a tonal counterpart for girl theme.
+ */
 @layer base {
+  :root,
+  [data-theme="blue"] {
+    --p-50:  239 249 253;
+    --p-100: 219 240 248;
+    --p-200: 178 230 243;  /* brand #B2E6F3 */
+    --p-300: 132 211 232;
+    --p-400: 86  190 219;
+    --p-500: 47  168 203;
+    --p-600: 33  138 175;
+    --p-700: 27  108 138;
+    --p-800: 26  86  110;
+    --p-900: 24  71  90;
+  }
+
+  [data-theme="pink"] {
+    --p-50:  254 244 248;
+    --p-100: 253 228 238;
+    --p-200: 250 200 220;
+    --p-300: 245 161 196;
+    --p-400: 236 113 166;
+    --p-500: 222 78  140;
+    --p-600: 199 54  117;
+    --p-700: 161 38  93;
+    --p-800: 131 33  79;
+    --p-900: 109 28  67;
+  }
+
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
+    @apply bg-cream-50 text-gray-900 antialiased;
+  }
+
+  /* Hide Edge / IE's native password-reveal and clear buttons so they
+     don't duplicate our custom eye toggle on password inputs. */
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none;
   }
 }

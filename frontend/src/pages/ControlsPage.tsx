@@ -14,8 +14,8 @@ const WASH_MODES = [
 ];
 
 export default function ControlsPage() {
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
+  const [device, setDevice] = useState<Device | null>(null);
+  const selectedDevice = device?.id ?? null;
   const [selectedMode, setSelectedMode] = useState<string>("");
   const [washHistory, setWashHistory] = useState<WashingCycle[]>([]);
   const [dispenseHistory, setDispenseHistory] = useState<DispenseLog[]>([]);
@@ -41,8 +41,7 @@ export default function ControlsPage() {
 
   useEffect(() => {
     api.get("/devices/").then((r) => {
-      setDevices(r.data);
-      if (r.data.length > 0) setSelectedDevice(r.data[0].id);
+      setDevice(r.data[0] ?? null);
     });
     fetchHistory();
   }, [fetchHistory]);
@@ -147,25 +146,21 @@ export default function ControlsPage() {
         <p className="text-gray-500 text-sm mt-1">Send commands and monitor your device in real time</p>
       </div>
 
-      {/* Device selector */}
-      {devices.length > 1 && (
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Select Device</label>
-          <select
-            value={selectedDevice ?? ""}
-            onChange={(e) => setSelectedDevice(Number(e.target.value))}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
-          >
-            {devices.map((d) => (
-              <option key={d.id} value={d.id}>{d.device_name} — {d.status}</option>
-            ))}
-          </select>
+      {/* Single-device status bar */}
+      {device ? (
+        <div className="mb-6 flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl">
+          <span
+            className={`w-2 h-2 rounded-full ${
+              device.status === "online" ? "bg-green-500" : "bg-gray-400"
+            }`}
+          />
+          <span className="text-sm font-medium text-gray-800">{device.device_name}</span>
+          <span className="text-xs font-mono text-gray-400 ml-2">{device.mac_address}</span>
+          <span className="ml-auto text-xs text-gray-500 capitalize">{device.status}</span>
         </div>
-      )}
-
-      {devices.length === 0 && (
+      ) : (
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6 text-sm text-yellow-700">
-          No devices found. Pair a device first.
+          No device paired yet. Go to <span className="font-medium">Device</span> to pair one.
         </div>
       )}
 

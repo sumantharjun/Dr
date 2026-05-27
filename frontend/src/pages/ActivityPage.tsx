@@ -29,16 +29,15 @@ function getMeta(eventType: string) {
 }
 
 export default function ActivityPage() {
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [device, setDevice] = useState<Device | null>(null);
+  const selectedId = device?.id ?? null;
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     api.get("/devices/").then((r) => {
-      setDevices(r.data);
-      if (r.data.length > 0) setSelectedId(r.data[0].id);
+      setDevice(r.data[0] ?? null);
     });
   }, []);
 
@@ -60,7 +59,7 @@ export default function ActivityPage() {
     fetchLogs();
   }, [fetchLogs]);
 
-  const selectedDevice = devices.find((d) => d.id === selectedId);
+  const selectedDevice = device;
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -80,30 +79,11 @@ export default function ActivityPage() {
         </button>
       </div>
 
-      {/* Device selector (shown only when user has multiple devices) */}
-      {devices.length > 1 && (
-        <div className="flex gap-2 mb-5 flex-wrap">
-          {devices.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => setSelectedId(d.id)}
-              className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${
-                selectedId === d.id
-                  ? "bg-primary-600 text-white"
-                  : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              {d.device_name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* No devices */}
-      {devices.length === 0 && (
+      {/* No device */}
+      {!device && (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <Cpu className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-          <p className="text-gray-500">No devices paired. Pair a device to see activity logs.</p>
+          <p className="text-gray-500">No device paired. Pair your device to see activity logs.</p>
         </div>
       )}
 
@@ -133,7 +113,7 @@ export default function ActivityPage() {
       )}
 
       {/* Empty state */}
-      {devices.length > 0 && !loading && logs.length === 0 && !error && (
+      {device && !loading && logs.length === 0 && !error && (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <Activity className="w-12 h-12 mx-auto text-gray-300 mb-3" />
           <p className="text-gray-500 font-medium">No activity recorded yet</p>

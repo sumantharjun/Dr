@@ -1,9 +1,28 @@
 import { useEffect } from "react";
-import { Bell, CheckCheck, Trash2, AlertTriangle, Info, Zap } from "lucide-react";
+import {
+  Bell,
+  CheckCheck,
+  Trash2,
+  AlertTriangle,
+  Info,
+  Zap,
+  Thermometer,
+  Wrench,
+  Droplet,
+  AlertOctagon,
+} from "lucide-react";
 import api from "../services/api";
 import { useAlertStore } from "../store/alertStore";
 import { useToastStore } from "../store/toastStore";
+import { alertMeta } from "../types/alerts";
 import { formatDistanceToNow } from "date-fns";
+
+const TYPE_ICON: Record<string, React.FC<{ className?: string }>> = {
+  overheating: Thermometer,
+  malfunction: Wrench,
+  washing_error: AlertOctagon,
+  low_detergent: Droplet,
+};
 
 export default function AlertsPage() {
   const { alerts, setAlerts, markRead, removeAlert } = useAlertStore();
@@ -82,7 +101,7 @@ export default function AlertsPage() {
               }`}
             >
               <div className={`mt-0.5 flex-shrink-0 ${severityIconColor(alert.severity)}`}>
-                <SeverityIcon severity={alert.severity} />
+                <AlertTypeIcon alertType={alert.alert_type} severity={alert.severity} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
@@ -91,8 +110,8 @@ export default function AlertsPage() {
                   >
                     {alert.severity}
                   </span>
-                  <span className="text-xs text-gray-400 uppercase tracking-wide">
-                    {alert.alert_type.replace(/_/g, " ")}
+                  <span className="text-xs text-gray-500 font-medium">
+                    {alertMeta(alert.alert_type).label}
                   </span>
                 </div>
                 <p className={`text-sm ${alert.is_read ? "text-gray-500" : "text-gray-800 font-medium"}`}>
@@ -128,7 +147,15 @@ export default function AlertsPage() {
   );
 }
 
-function SeverityIcon({ severity }: { severity: string }) {
+function AlertTypeIcon({
+  alertType,
+  severity,
+}: {
+  alertType: string;
+  severity: string;
+}) {
+  const TypeIcon = TYPE_ICON[alertType];
+  if (TypeIcon) return <TypeIcon className="w-5 h-5" />;
   if (severity === "info") return <Info className="w-5 h-5" />;
   if (severity === "critical") return <Zap className="w-5 h-5" />;
   return <AlertTriangle className="w-5 h-5" />;

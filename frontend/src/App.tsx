@@ -10,6 +10,9 @@ import ControlsPage from "./pages/ControlsPage";
 import AlertsPage from "./pages/AlertsPage";
 import OrdersPage from "./pages/OrdersPage";
 import ActivityPage from "./pages/ActivityPage";
+import BabySetupPage from "./pages/BabySetupPage";
+import SettingsPage from "./pages/SettingsPage";
+import BabyGate from "./components/BabyGate";
 
 export default function App() {
   return (
@@ -18,7 +21,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
-          <Route element={<AppLayout />}>
+          <Route path="/baby-setup" element={<ErrorBoundary><BabySetupPage /></ErrorBoundary>} />
+          <Route element={<BabyGate><AppLayout /></BabyGate>}>
             <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
             <Route path="/devices"   element={<ErrorBoundary><DevicesPage /></ErrorBoundary>} />
             <Route path="/feeding"   element={<ErrorBoundary><FeedingPage /></ErrorBoundary>} />
@@ -26,6 +30,7 @@ export default function App() {
             <Route path="/alerts"    element={<ErrorBoundary><AlertsPage /></ErrorBoundary>} />
             <Route path="/orders"    element={<ErrorBoundary><OrdersPage /></ErrorBoundary>} />
             <Route path="/activity"  element={<ErrorBoundary><ActivityPage /></ErrorBoundary>} />
+            <Route path="/settings"  element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

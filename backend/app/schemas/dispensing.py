@@ -29,6 +29,28 @@ class DispenseRequest(BaseModel):
         return round(v, 1)
 
 
+class DeviceDispenseRequest(BaseModel):
+    """Device-initiated dispense. device_id is derived from the API key."""
+    temperature_c: float
+    volume_ml: float
+
+    @field_validator("temperature_c")
+    @classmethod
+    def validate_temperature(cls, v: float) -> float:
+        if not (TEMP_MIN <= v <= TEMP_MAX):
+            raise ValueError(
+                f"Temperature must be between {TEMP_MIN}°C and {TEMP_MAX}°C (safe milk range)"
+            )
+        return round(v, 1)
+
+    @field_validator("volume_ml")
+    @classmethod
+    def validate_volume(cls, v: float) -> float:
+        if not (VOL_MIN <= v <= VOL_MAX):
+            raise ValueError(f"Volume must be between {VOL_MIN}ml and {VOL_MAX}ml")
+        return round(v, 1)
+
+
 class DispenseLogOut(BaseModel):
     id: int
     device_id: int
@@ -36,6 +58,7 @@ class DispenseLogOut(BaseModel):
     volume_ml: float
     status: str
     progress_pct: int = 0
+    initiated_by: str = "app"
     created_at: datetime
     completed_at: Optional[datetime]
 

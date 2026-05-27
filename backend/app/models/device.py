@@ -1,5 +1,3 @@
-import secrets
-
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
@@ -18,7 +16,15 @@ class Device(Base):
     status = Column(
         Enum("online", "offline", "pairing", "error"), default="offline"
     )
-    api_key = Column(String(64), unique=True, index=True, default=lambda: secrets.token_hex(32))
+    # ── API key storage ────────────────────────────────────────────────────
+    # Legacy plaintext column — kept nullable during the rollout so the startup
+    # migration can backfill `api_key_hash` from it, then null it out. New
+    # registrations never populate this column.
+    api_key = Column(String(64), unique=True, index=True, nullable=True)
+    # SHA-256 hex (64 chars) of the device's plaintext API key. This is what
+    # the auth dependency looks up. Plaintext is returned once at registration
+    # / rotation and is never persisted afterwards.
+    api_key_hash = Column(String(64), unique=True, index=True, nullable=True)
     last_seen = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=now_ist)
 
@@ -27,3 +33,6 @@ class Device(Base):
     washing_cycles = relationship("WashingCycle", back_populates="device", cascade="all, delete")
     dispense_logs = relationship("MilkDispenseLog", back_populates="device", cascade="all, delete")
     alerts = relationship("DeviceAlert", back_populates="device", cascade="all, delete")
+    metrics = relationship("DeviceMetrics", back_populates="device", cascade="all, delete")
+    activity_logs = relationship("DeviceActivityLog", back_populates="device", cascade="all, delete")
+    pending_commands = relationship("PendingCommand", back_populates="device", cascade="all, delete")

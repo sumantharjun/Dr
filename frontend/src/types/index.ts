@@ -103,3 +103,13 @@ export interface ActivityLog {
   description: string | null;
   recorded_at: string;
 }
+
+export interface Baby {
+  id: number;
+  name: string | null;
+  gender: "male" | "female";
+  weight_kg: number;
+  theme_color: "blue" | "pink";
+  created_at: string;
+  updated_at: string;
+}

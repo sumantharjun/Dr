@@ -17,7 +17,6 @@ export default function FeedingPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
-    device_id: "",
     milk_consumed_ml: "",
     method: "manual",
     notes: "",
@@ -60,15 +59,17 @@ export default function FeedingPage() {
     setSubmitting(true);
     try {
       await api.post("/feeding/logs", {
-        device_id: form.device_id ? Number(form.device_id) : null,
+        device_id: devices[0]?.id ?? null,
         milk_consumed_ml: form.milk_consumed_ml ? Number(form.milk_consumed_ml) : null,
         method: form.method,
         notes: form.notes || null,
-        feed_time: new Date(form.feed_time).toISOString(),
+        // Send the user's wall-clock time as-is (no UTC conversion). Server
+        // stores everything as naive IST per `now_ist()` convention; converting
+        // here would offset every feed by the local-to-UTC delta.
+        feed_time: form.feed_time,
       });
       setShowForm(false);
       setForm({
-        device_id: "",
         milk_consumed_ml: "",
         method: "manual",
         notes: "",
@@ -222,21 +223,6 @@ export default function FeedingPage() {
                   <option value="other">Other</option>
                 </select>
               </div>
-              {devices.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Device (optional)</label>
-                  <select
-                    value={form.device_id}
-                    onChange={(e) => setForm({ ...form, device_id: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
-                  >
-                    <option value="">None</option>
-                    {devices.map((d) => (
-                      <option key={d.id} value={d.id}>{d.device_name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea

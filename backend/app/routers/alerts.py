@@ -8,6 +8,7 @@ from app.models.alert import DeviceAlert
 from app.models.device import Device
 from app.models.user import User
 from app.schemas.alert import AlertCreate, AlertOut
+from app.services.alerts_catalog import default_severity_for
 from app.utils.dependencies import get_current_user, get_device_by_api_key
 from app.websocket.manager import manager
 
@@ -38,21 +39,26 @@ async def create_alert(
     device: Device = Depends(get_device_by_api_key),
     db: Session = Depends(get_db),
 ):
-    """Called by device/firmware to push alerts. Requires X-Device-Api-Key header."""
+    """Called by device/firmware to push safety alerts. Requires X-Device-Api-Key header.
+
+    Valid alert_type values: overheating, malfunction, washing_error, low_detergent.
+    If severity is omitted, the catalog default for that alert_type is used.
+    """
     if device.id != body.device_id:
         raise HTTPException(status_code=403, detail="API key does not match device_id")
+    severity = body.severity or default_severity_for(body.alert_type)
     alert = DeviceAlert(
         device_id=body.device_id,
         alert_type=body.alert_type,
         message=body.message,
-        severity=body.severity,
+        severity=severity,
     )
     db.add(alert)
     db.commit()
     db.refresh(alert)
     await manager.broadcast_to_device(
         str(body.device_id),
-        {"type": "alert", "alert_type": body.alert_type, "message": body.message, "severity": body.severity},
+        {"type": "alert", "alert_type": body.alert_type, "message": body.message, "severity": severity},
     )
     return alert
 

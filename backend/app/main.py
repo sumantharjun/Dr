@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import Base, engine, SessionLocal
 from app.models import *  # noqa: F401,F403 — registers all ORM models with Base
-from app.routers import auth, devices, feeding, washing, dispensing, alerts, orders, metrics, activity
+from app.routers import auth, devices, feeding, washing, dispensing, alerts, orders, metrics, activity, baby
 from app.utils.timezone import now_ist
 
 # ---------------------------------------------------------------------------
@@ -41,6 +41,79 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 Base.metadata.create_all(bind=engine)
 
+
+def _migrate_device_api_key_hash() -> None:
+    """
+    One-shot schema + data migration for device API key hashing.
+
+    - Adds `api_key_hash VARCHAR(64)` to `devices` if missing.
+    - Backfills the hash for any device that still has the legacy plaintext
+      `api_key`, then nulls the plaintext column so no key is ever at rest.
+    Idempotent — safe to run on every boot.
+    """
+    from sqlalchemy import inspect, text
+    from app.utils.security import hash_api_key
+
+    inspector = inspect(engine)
+    columns = {c["name"] for c in inspector.get_columns("devices")}
+
+    with engine.begin() as conn:
+        if "api_key_hash" not in columns:
+            conn.execute(text("ALTER TABLE devices ADD COLUMN api_key_hash VARCHAR(64) NULL"))
+            try:
+                conn.execute(text(
+                    "CREATE UNIQUE INDEX ix_devices_api_key_hash ON devices(api_key_hash)"
+                ))
+            except Exception:
+                # MySQL may complain if the index already exists; ignore.
+                pass
+            logger.info("Added api_key_hash column to devices table")
+
+        rows = conn.execute(text(
+            "SELECT id, api_key FROM devices WHERE api_key IS NOT NULL AND api_key_hash IS NULL"
+        )).fetchall()
+        for row in rows:
+            digest = hash_api_key(row.api_key)
+            conn.execute(
+                text("UPDATE devices SET api_key_hash=:h, api_key=NULL WHERE id=:i"),
+                {"h": digest, "i": row.id},
+            )
+        if rows:
+            logger.info("Backfilled api_key_hash for %d device(s) and cleared plaintext", len(rows))
+
+
+try:
+    _migrate_device_api_key_hash()
+except Exception:
+    logging.getLogger(__name__).exception("Device API key hash migration failed")
+
+
+def _migrate_initiated_by() -> None:
+    """
+    Idempotent: add `initiated_by` ENUM('app','device') column to both
+    washing_cycles and milk_dispense_logs, defaulting to 'app' for any
+    rows that pre-date the device-initiated endpoints.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    for table in ("washing_cycles", "milk_dispense_logs"):
+        columns = {c["name"] for c in inspector.get_columns(table)}
+        if "initiated_by" in columns:
+            continue
+        with engine.begin() as conn:
+            conn.execute(text(
+                f"ALTER TABLE {table} "
+                f"ADD COLUMN initiated_by ENUM('app','device') NOT NULL DEFAULT 'app'"
+            ))
+        logger.info("Added initiated_by column to %s", table)
+
+
+try:
+    _migrate_initiated_by()
+except Exception:
+    logging.getLogger(__name__).exception("initiated_by migration failed")
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -58,6 +131,25 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Device-Api-Key"],
 )
 
+
+# ---------------------------------------------------------------------------
+# Security headers (set at the app layer so they apply regardless of which
+# reverse proxy is in front of us).
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault(
+        "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+    )
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
+    return response
+
 app.include_router(auth.router)
 app.include_router(devices.router)
 app.include_router(feeding.router)
@@ -67,6 +159,7 @@ app.include_router(alerts.router)
 app.include_router(orders.router)
 app.include_router(metrics.router)
 app.include_router(activity.router)
+app.include_router(baby.router)
 
 scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
 

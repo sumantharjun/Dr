@@ -7,3 +7,5 @@ from app.models.alert import DeviceAlert
 from app.models.order import Product, Order, OrderItem
 from app.models.metrics import DeviceMetrics
 from app.models.activity import DeviceActivityLog
+from app.models.pending_command import PendingCommand
+from app.models.baby import Baby

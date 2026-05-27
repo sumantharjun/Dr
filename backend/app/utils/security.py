@@ -1,3 +1,4 @@
+import hashlib
 from datetime import timedelta
 from typing import Optional
 
@@ -8,6 +9,16 @@ from app.config import settings
 from app.utils.timezone import now_ist
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def hash_api_key(plaintext: str) -> str:
+    """
+    Hash a device API key for storage. Device keys are high-entropy random
+    tokens (256 bits) so a fast hash (SHA-256) is appropriate — slow hashes
+    like bcrypt aren't needed since the keyspace is already brute-force-proof,
+    and per-request bcrypt would add unacceptable latency to every device call.
+    """
+    return hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
 
 
 def hash_password(password: str) -> str:

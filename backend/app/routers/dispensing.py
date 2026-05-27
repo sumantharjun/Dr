@@ -8,7 +8,8 @@ from app.database import get_db
 from app.models.device import Device
 from app.models.dispensing import MilkDispenseLog
 from app.models.user import User
-from app.schemas.dispensing import DispenseLogOut, DispenseRequest
+from app.schemas.dispensing import DeviceDispenseRequest, DispenseLogOut, DispenseRequest
+from app.services.commands import dispatch_command
 from app.utils.dependencies import get_current_user, get_device_by_api_key
 from app.utils.timezone import now_ist
 from app.websocket.manager import manager
@@ -24,6 +25,18 @@ class DispenseProgressUpdate(BaseModel):
     progress_pct: int  # 0–100
 
 
+def _has_active_dispense(db: Session, device_id: int) -> bool:
+    return (
+        db.query(MilkDispenseLog)
+        .filter(
+            MilkDispenseLog.device_id == device_id,
+            MilkDispenseLog.status.in_(["pending", "dispensing"]),
+        )
+        .first()
+        is not None
+    )
+
+
 @router.post("/", response_model=DispenseLogOut, status_code=201)
 async def dispense_milk(
     body: DispenseRequest,
@@ -36,24 +49,76 @@ async def dispense_milk(
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
+    if _has_active_dispense(db, body.device_id):
+        raise HTTPException(
+            status_code=409,
+            detail="A dispense is already active on this device. Wait for it to finish before starting another.",
+        )
+
     log = MilkDispenseLog(
         device_id=body.device_id,
         temperature_c=body.temperature_c,
         volume_ml=body.volume_ml,
         status="pending",
+        initiated_by="app",
     )
     db.add(log)
     db.commit()
     db.refresh(log)
 
-    await manager.broadcast_to_device(
-        str(body.device_id),
+    await dispatch_command(
+        db,
+        body.device_id,
         {
             "type": "command",
             "command": "dispense",
             "temperature_c": body.temperature_c,
             "volume_ml": body.volume_ml,
             "log_id": log.id,
+        },
+    )
+    return log
+
+
+@router.post("/device-start", response_model=DispenseLogOut, status_code=201)
+async def device_start_dispense(
+    body: DeviceDispenseRequest,
+    device: Device = Depends(get_device_by_api_key),
+    db: Session = Depends(get_db),
+):
+    """
+    Called by the device firmware when a user starts a dispense from the
+    physical controls (dialed temperature + volume on the device). Creates a
+    server-side log row so the device has a `log_id` to use in subsequent
+    /dispensing/progress calls, and notifies any app clients.
+    """
+    if _has_active_dispense(db, device.id):
+        raise HTTPException(
+            status_code=409,
+            detail="A dispense is already active on this device. Wait for it to finish before starting another.",
+        )
+
+    log = MilkDispenseLog(
+        device_id=device.id,
+        temperature_c=body.temperature_c,
+        volume_ml=body.volume_ml,
+        status="pending",
+        initiated_by="device",
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+
+    await manager.broadcast_to_device(
+        str(device.id),
+        {
+            "type": "dispense_progress",
+            "log_id": log.id,
+            "status": "pending",
+            "progress_pct": 0,
+            "initiated_by": "device",
+            "temperature_c": log.temperature_c,
+            "volume_ml": log.volume_ml,
         },
     )
     return log

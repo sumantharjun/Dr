@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Cpu,
@@ -7,33 +7,55 @@ import {
   Bell,
   ShoppingBag,
   LogOut,
-  Baby,
   Activity,
+  Settings,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { useAlertStore } from "../../store/alertStore";
+import { useBabyStore } from "../../store/babyStore";
 import { clsx } from "clsx";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/devices", label: "Devices", icon: Cpu },
+  { to: "/devices", label: "Device", icon: Cpu },
   { to: "/feeding", label: "Feeding", icon: Droplets },
   { to: "/controls", label: "Controls", icon: Settings2 },
   { to: "/alerts", label: "Alerts", icon: Bell },
   { to: "/orders", label: "Orders", icon: ShoppingBag },
   { to: "/activity", label: "Activity", icon: Activity },
+  { to: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar() {
   const { user, logout } = useAuthStore();
+  const { setBaby } = useBabyStore();
   const unreadCount = useAlertStore((s) => s.unreadCount());
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    logout();
+    setBaby(null);
+    navigate("/login", { replace: true });
+  }
 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0">
       {/* Logo */}
-      <div className="flex items-center gap-2 px-6 py-5 border-b border-gray-200">
-        <Baby className="text-primary-600 w-7 h-7" />
-        <span className="font-bold text-lg text-gray-900">BabyFeeder</span>
+      <div className="flex flex-col items-center gap-2 px-5 py-5 border-b border-gray-200">
+        <img
+          src="/mascots/UNOVA_Logo.png"
+          alt="UNOVA"
+          className="w-48 h-auto"
+        />
+        <div className="flex items-center gap-2">
+          {/* <Mascot variant="auto" size={28} /> */}
+          <div className="leading-tight">
+            {/* <span className="text-xs font-semibold text-gray-700 block">UNOSOL</span> */}
+            <span className="text-[9px] tracking-widest text-primary-600 font-medium">
+              SAFE · TRUST · PRECISE
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Nav */}
@@ -66,7 +88,7 @@ export default function Sidebar() {
       <div className="px-3 py-4 border-t border-gray-200">
         <div className="px-3 py-2 text-sm text-gray-700 font-medium truncate">{user?.full_name}</div>
         <button
-          onClick={logout}
+          onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100 w-full"
         >
           <LogOut className="w-5 h-5" />

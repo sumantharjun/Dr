@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -12,6 +12,22 @@ from app.models.user import User
 from app.utils.dependencies import get_current_user, get_device_by_api_key
 
 router = APIRouter(prefix="/activity", tags=["activity"])
+
+# Closed set of event types — mirror of EVENT_META in
+# frontend/src/pages/ActivityPage.tsx. Keep in sync.
+VALID_EVENT_TYPES = frozenset({
+    "wash_started",
+    "wash_completed",
+    "wash_failed",
+    "dispense_started",
+    "dispense_completed",
+    "dispense_failed",
+    "alert_triggered",
+    "network_reconnected",
+    "device_online",
+    "device_offline",
+    "feeding_logged",
+})
 
 
 class ActivityOut(BaseModel):
@@ -28,6 +44,22 @@ class ActivityCreate(BaseModel):
     device_id: int
     event_type: str
     description: str | None = None
+
+    @field_validator("event_type")
+    @classmethod
+    def validate_event_type(cls, v: str) -> str:
+        if v not in VALID_EVENT_TYPES:
+            raise ValueError(
+                f"event_type must be one of: {sorted(VALID_EVENT_TYPES)}"
+            )
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v: str | None) -> str | None:
+        if v is not None and len(v) > 500:
+            raise ValueError("description must be 500 characters or fewer")
+        return v
 
 
 @router.post("/", response_model=ActivityOut, status_code=201)

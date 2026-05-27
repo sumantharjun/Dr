@@ -17,6 +17,9 @@ class WashingCycle(Base):
         Enum("pending", "running", "completed", "failed"), default="pending"
     )
     progress_pct = Column(Integer, default=0)  # 0–100
+    # Who initiated the cycle — app user via /washing/start, or the device
+    # itself via /washing/device-start (physical button on the machine).
+    initiated_by = Column(Enum("app", "device"), nullable=False, default="app")
     started_at = Column(DateTime, default=now_ist)
     completed_at = Column(DateTime, nullable=True)
 
