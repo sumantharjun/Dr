@@ -11,6 +11,9 @@ class DispenseRequest(BaseModel):
     device_id: int
     temperature_c: float
     volume_ml: float
+    # Set force=true to supersede a dispense still stuck pending/dispensing
+    # (marked failed with ended_reason='superseded'). App-side recovery path.
+    force: bool = False
 
     @field_validator("temperature_c")
     @classmethod
@@ -30,9 +33,15 @@ class DispenseRequest(BaseModel):
 
 
 class DeviceDispenseRequest(BaseModel):
-    """Device-initiated dispense. device_id is derived from the API key."""
+    """Device-initiated dispense. device_id is derived from the API key.
+
+    Set `force=true` to abandon any dispense that's still pending/dispensing
+    on this device (the prior log will be marked `failed` with a note
+    explaining it was force-superseded).
+    """
     temperature_c: float
     volume_ml: float
+    force: bool = False
 
     @field_validator("temperature_c")
     @classmethod
@@ -59,6 +68,7 @@ class DispenseLogOut(BaseModel):
     status: str
     progress_pct: int = 0
     initiated_by: str = "app"
+    ended_reason: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime]
 

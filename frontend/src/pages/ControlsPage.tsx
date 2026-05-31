@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Settings2, Droplet, Wind, Zap, FlaskConical, Thermometer, Square } from "lucide-react";
 import api from "../services/api";
 import { Device, WashingCycle, DispenseLog } from "../types";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { useToastStore } from "../store/toastStore";
 import { useWsEventStore } from "../store/wsEventStore";
 
@@ -37,6 +37,32 @@ export default function ControlsPage() {
     ]);
     setWashHistory(wash.data);
     setDispenseHistory(disp.data);
+
+    // Hydrate any in-flight operation into the progress store so the live
+    // card + Stop button appear even after a page reload (we can't rely on
+    // having received the original WS start event). Only seed when the store
+    // is empty for that device, so we never clobber a live update.
+    const store = useWsEventStore.getState();
+    const activeWash = (wash.data as WashingCycle[]).find(
+      (c) => c.status === "pending" || c.status === "running"
+    );
+    if (activeWash && !store.washProgress[activeWash.device_id]) {
+      store.setWashProgress(activeWash.device_id, {
+        cycle_id: activeWash.id,
+        progress: activeWash.progress_pct ?? 0,
+        status: activeWash.status,
+      });
+    }
+    const activeDisp = (disp.data as DispenseLog[]).find(
+      (d) => d.status === "pending" || d.status === "dispensing"
+    );
+    if (activeDisp && !store.dispenseProgress[activeDisp.device_id]) {
+      store.setDispenseProgress(activeDisp.device_id, {
+        log_id: activeDisp.id,
+        progress: activeDisp.progress_pct ?? 0,
+        status: activeDisp.status,
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -83,8 +109,33 @@ export default function ControlsPage() {
       addToast(`Wash (${selectedMode.replace(/_/g, " ")}) started`, "info");
       fetchHistory();
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      addToast(msg || "Failed to start wash cycle", "error");
+      const resp = (err as { response?: { status?: number; data?: any } })?.response;
+      // 409 means a cycle is already active — surface that as info, not an
+      // error, and pin the live progress card to the existing cycle so the
+      // user immediately sees the right state.
+      if (resp?.status === 409 && resp.data?.active_cycle_id) {
+        const d = resp.data;
+        useWsEventStore.getState().setWashProgress(selectedDevice, {
+          cycle_id: d.active_cycle_id,
+          progress: 0,
+          status: d.active_cycle_status ?? "pending",
+        });
+        const ago = d.active_cycle_started_at
+          ? formatDistanceToNow(new Date(d.active_cycle_started_at), { addSuffix: true })
+          : null;
+        const mode = d.active_cycle_mode?.replace(/_/g, " ") ?? "cycle";
+        const by = d.active_cycle_initiated_by === "device" ? "from device" : "from app";
+        addToast(
+          ago
+            ? `Wash already running (${mode}, started ${by} ${ago})`
+            : `Wash already running (${mode}, started ${by})`,
+          "info",
+        );
+        fetchHistory();
+      } else {
+        const msg = resp?.data?.detail;
+        addToast(msg || "Failed to start wash cycle", "error");
+      }
     } finally {
       setWashLoading(false);
     }
@@ -113,8 +164,28 @@ export default function ControlsPage() {
       addToast(`Dispensing ${vol}ml at ${temp}°C…`, "info");
       fetchHistory();
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      addToast(msg || "Failed to dispense", "error");
+      const resp = (err as { response?: { status?: number; data?: any } })?.response;
+      if (resp?.status === 409 && resp.data?.active_log_id) {
+        const d = resp.data;
+        useWsEventStore.getState().setDispenseProgress(selectedDevice, {
+          log_id: d.active_log_id,
+          progress: 0,
+          status: d.active_log_status ?? "pending",
+        });
+        const ago = d.active_log_created_at
+          ? formatDistanceToNow(new Date(d.active_log_created_at), { addSuffix: true })
+          : null;
+        addToast(
+          ago
+            ? `Dispense already running (${d.active_log_volume_ml ?? "?"}ml @ ${d.active_log_temperature_c ?? "?"}°C, started ${ago})`
+            : `Dispense already running (${d.active_log_volume_ml ?? "?"}ml @ ${d.active_log_temperature_c ?? "?"}°C)`,
+          "info",
+        );
+        fetchHistory();
+      } else {
+        const msg = resp?.data?.detail;
+        addToast(msg || "Failed to dispense", "error");
+      }
     } finally {
       setDispenseLoading(false);
     }
@@ -123,14 +194,39 @@ export default function ControlsPage() {
   async function handleStop(type: "wash" | "dispense") {
     if (!selectedDevice) return;
     setStopLoading(type);
+    // Prefer the cancel endpoint: it resets the DB row (so the device is
+    // unblocked even when it's offline) AND fires the stop command. Fall back
+    // to a bare command only if we don't have an active id to cancel.
+    const activeId = type === "wash" ? washProg?.cycle_id : dispenseProg?.log_id;
     try {
-      await api.post(`/devices/${selectedDevice}/command`, {
-        command: type === "wash" ? "stop_wash" : "stop_dispense",
-      });
-      addToast(`Stop command sent to device`, "info");
+      if (activeId) {
+        const path = type === "wash" ? "washing" : "dispensing";
+        await api.patch(`/${path}/${activeId}/cancel`);
+        // Optimistically reflect the reset; the WS broadcast will confirm it.
+        if (type === "wash") {
+          useWsEventStore.getState().setWashProgress(selectedDevice, {
+            cycle_id: activeId,
+            progress: washProg?.progress ?? 0,
+            status: "failed",
+          });
+        } else {
+          useWsEventStore.getState().setDispenseProgress(selectedDevice, {
+            log_id: activeId,
+            progress: dispenseProg?.progress ?? 0,
+            status: "failed",
+          });
+        }
+        addToast(`${type === "wash" ? "Wash" : "Dispense"} cancelled`, "info");
+        fetchHistory();
+      } else {
+        await api.post(`/devices/${selectedDevice}/command`, {
+          command: type === "wash" ? "stop_wash" : "stop_dispense",
+        });
+        addToast(`Stop command sent to device`, "info");
+      }
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      addToast(msg || "Failed to send stop command", "error");
+      addToast(msg || "Failed to stop", "error");
     } finally {
       setStopLoading(null);
     }
@@ -347,8 +443,10 @@ export default function ControlsPage() {
         </div>
       </div>
 
+      {/* Logs — wash cycles & dispenses side by side */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Wash History */}
-      <div className="mt-6 bg-white rounded-xl border border-gray-200">
+      <div className="bg-white rounded-xl border border-gray-200">
         <div className="px-5 py-4 border-b border-gray-100">
           <h2 className="font-semibold text-gray-900">Recent Wash Cycles</h2>
         </div>
@@ -388,7 +486,7 @@ export default function ControlsPage() {
       </div>
 
       {/* Dispense History */}
-      <div className="mt-6 bg-white rounded-xl border border-gray-200">
+      <div className="bg-white rounded-xl border border-gray-200">
         <div className="px-5 py-4 border-b border-gray-100">
           <h2 className="font-semibold text-gray-900">Recent Dispense Logs</h2>
         </div>
@@ -418,6 +516,7 @@ export default function ControlsPage() {
             </table>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

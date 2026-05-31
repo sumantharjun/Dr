@@ -7,6 +7,7 @@ import Mascot from "../components/Mascot";
 
 export default function RegisterPage() {
   const [form, setForm] = useState({ email: "", full_name: "", password: "" });
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,6 +17,10 @@ export default function RegisterPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    if (form.password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
     setLoading(true);
     try {
       const { data } = await api.post("/auth/register", form);
@@ -95,6 +100,23 @@ export default function RegisterPage() {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                minLength={8}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="Re-enter your password"
+              />
+            </div>
+            {confirmPassword && form.password !== confirmPassword && (
+              <p className="text-xs text-red-600 mt-1">Passwords do not match</p>
+            )}
           </div>
           <button
             type="submit"

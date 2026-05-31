@@ -1,9 +1,11 @@
-import { useState, FormEvent } from "react";
-import { Palette, Baby as BabyIcon } from "lucide-react";
+import { useState, useEffect, FormEvent } from "react";
+import { Link } from "react-router-dom";
+import { Palette, Baby as BabyIcon, Cpu, ChevronRight } from "lucide-react";
 import api from "../services/api";
 import Mascot from "../components/Mascot";
 import { useBabyStore } from "../store/babyStore";
 import { useToastStore } from "../store/toastStore";
+import type { Device } from "../types";
 
 export default function SettingsPage() {
   const { baby, setBaby, applyTheme } = useBabyStore();
@@ -14,6 +16,14 @@ export default function SettingsPage() {
   const [weight, setWeight] = useState(baby ? String(baby.weight_kg) : "");
   const [theme, setThemeLocal] = useState<"blue" | "pink">(baby?.theme_color ?? "blue");
   const [saving, setSaving] = useState(false);
+  const [device, setDevice] = useState<Device | null>(null);
+
+  useEffect(() => {
+    api
+      .get("/devices/")
+      .then((r) => setDevice(r.data[0] ?? null))
+      .catch(() => setDevice(null));
+  }, []);
 
   if (!baby) {
     return (
@@ -171,6 +181,46 @@ export default function SettingsPage() {
           </button>
         </div>
       </form>
+
+      {/* Device card */}
+      <section className="bg-white rounded-2xl border border-gray-200 p-5 mt-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Cpu className="w-5 h-5 text-primary-600" />
+          <h2 className="font-semibold text-gray-900">Device</h2>
+        </div>
+
+        {device ? (
+          <Link
+            to="/devices"
+            className="flex items-center gap-3 border border-gray-200 rounded-xl p-4 hover:border-primary-300 hover:bg-primary-50/40 transition-colors"
+          >
+            <span
+              className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                device.status === "online" ? "bg-green-500" : "bg-gray-300"
+              }`}
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-800 truncate">{device.device_name}</p>
+              <p className="text-xs font-mono text-gray-400 truncate">{device.mac_address}</p>
+            </div>
+            <span className="text-xs text-gray-500 capitalize">{device.status}</span>
+            <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          </Link>
+        ) : (
+          <div className="flex items-center justify-between border border-dashed border-gray-300 rounded-xl p-4">
+            <p className="text-sm text-gray-500">No device paired yet.</p>
+            <Link
+              to="/devices"
+              className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            >
+              Pair device
+            </Link>
+          </div>
+        )}
+        <p className="text-xs text-gray-400 mt-3">
+          Pair a new device, scan its QR code, rotate its API key, or remove it.
+        </p>
+      </section>
     </div>
   );
 }

@@ -49,8 +49,43 @@ The server sends a `ping` frame every **5 minutes** of silence — the device mu
 
 All events are JSON objects with a `"type"` field. The server ignores unknown types.
 
+### How WS events are processed
+
+Events split into two groups by behaviour:
+
+| Event type | Persists to DB? | Notes |
+|------------|-----------------|-------|
+| `wash_progress` | ✅ Yes | Equivalent to `POST /washing/progress`. |
+| `dispense_progress` | ✅ Yes | Equivalent to `POST /dispensing/progress`. |
+| `alert` | ✅ Yes | Equivalent to `POST /alerts/`. `alert_type` is **required**. |
+| `metric` | ✅ Yes | Equivalent to `POST /metrics/`. |
+| `weight_report` | ❌ No (ephemeral, live display only) | |
+| `status` | ❌ No (only updates `last_seen`) | |
+
+**You no longer see your own events echoed back** — the originating socket is
+excluded from the broadcast (since 2026-05-28). If you need a confirmation,
+look at the response shape on the equivalent HTTP route, or call
+`GET /washing/history` / `GET /dispensing/history` to verify.
+
+If a persistable event fails validation (bad `cycle_id`, missing
+`alert_type`, out-of-range `progress_pct`, etc.), the server **does not
+broadcast** the bad data to app clients. Instead it sends an `error` frame
+back **only to the sender**:
+
+```json
+{
+  "type": "error",
+  "for": "wash_progress",
+  "status_code": 404,
+  "detail": "Cycle not found",
+  "original": { "type": "wash_progress", "cycle_id": 9999, ... }
+}
+```
+
+The connection stays open after an error frame — fix the payload and resend.
+
 ### `wash_progress`
-Report wash cycle status.
+Report wash cycle status. Persists; mirrors `POST /washing/progress`.
 
 ```json
 {
@@ -68,7 +103,7 @@ Report wash cycle status.
 | `progress_pct` | int | 0 – 100 |
 
 ### `dispense_progress`
-Report milk dispense status.
+Report milk dispense status. Persists; mirrors `POST /dispensing/progress`.
 
 ```json
 {
@@ -98,27 +133,29 @@ Real-time weight sensor reading (optional, for live display only — does **not*
 ```
 
 ### `alert`
-Device-initiated alert (low water, heating error, etc.).
+Device-initiated safety alert. **Persists** to the alerts table; mirrors
+`POST /alerts/` (see §4e for the closed catalog of `alert_type` values).
 
 ```json
 {
   "type": "alert",
-  "payload": {
-    "severity": "warning",
-    "message": "Water reservoir below 20%"
-  }
+  "alert_type": "low_detergent",
+  "message": "Water reservoir below 20%",
+  "severity": "warning"
 }
 ```
 
-| `severity` | Use for |
-|------------|---------|
-| `info` | Informational events |
-| `warning` | Degraded but operational |
-| `error` | Feature unavailable |
-| `critical` | Requires immediate attention |
+| Field | Required | Notes |
+|-------|----------|-------|
+| `alert_type` | Yes | One of `overheating` `malfunction` `washing_error` `low_detergent` (see §4e). |
+| `message` | Yes | 1–500 chars, free text. |
+| `severity` | No | If omitted, server uses the catalog default for the `alert_type`. |
+
+Fields nested under `"payload": {...}` are also accepted for backward
+compatibility with the original WS shape, but prefer flat fields.
 
 ### `status`
-Heartbeat / general device status.
+Heartbeat / general device status. Ephemeral — only `last_seen` is updated.
 
 ```json
 {
@@ -132,17 +169,25 @@ Heartbeat / general device status.
 ```
 
 ### `metric`
-Energy / water consumption metrics.
+Energy / water consumption metric. **Persists**; mirrors `POST /metrics/`.
 
 ```json
 {
   "type": "metric",
-  "payload": {
-    "power_kwh": 0.12,
-    "water_liters": 1.5
-  }
+  "power_kwh": 0.62,
+  "water_liters": 2.8,
+  "cycle_id": 42
 }
 ```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `power_kwh` | Yes | ≥ 0, kilowatt-hours consumed this cycle. |
+| `water_liters` | Yes | ≥ 0, liters consumed this cycle. |
+| `cycle_id` | No (recommended) | Wash cycle this metric belongs to. |
+
+Fields nested under `"payload": {...}` are also accepted for backward
+compatibility, but prefer flat fields.
 
 ---
 
@@ -659,12 +704,13 @@ Content-Type: application/json
 Request body:
 
 ```json
-{ "mode": "full_cycle" }
+{ "mode": "full_cycle", "force": false }
 ```
 
 | Field | Required | Type | Notes |
 |-------|----------|------|-------|
 | `mode` | Yes | string | One of `full_cycle`, `wash`, `deep_clean`, `dispense`. |
+| `force` | No | bool | Default `false`. When `true`, any prior pending/running cycle on this device is force-failed (so this call can proceed). Use this for recovery after a crash, reboot, or dropped connection — see "Recovery from a stuck cycle" below. |
 
 Response `201 Created`:
 
@@ -687,15 +733,67 @@ exactly like a cycle started from the app.
 
 **Concurrency rule:** the server allows only one active cycle per device
 at a time. If a cycle already exists in `pending` or `running` state,
-this endpoint returns `409 Conflict`:
+this endpoint returns `409 Conflict` with a body that includes details
+about the active cycle so the firmware can choose between adopting it
+and force-replacing it:
 
 ```json
-{ "detail": "A wash cycle is already active on this device. Finish or fail it before starting another." }
+{
+  "detail": "A wash cycle is already active on this device. If it's stale, resend with `force: true`; if it just started (see active_cycle_started_at), adopt its `active_cycle_id` for subsequent progress packets.",
+  "active_cycle_id": 42,
+  "active_cycle_started_at": "2026-05-28T22:30:11",
+  "active_cycle_initiated_by": "app",
+  "active_cycle_status": "pending",
+  "active_cycle_mode": "full_cycle"
+}
 ```
 
-If the device gets a `409`, the existing cycle must be driven to
-`completed` or `failed` (via `/washing/progress`) before a new one can
-start.
+#### Recommended firmware flow on 409
+
+```
+on POST /washing/device-start → 409:
+   age = now - response.active_cycle_started_at
+   if age < 15 seconds:
+       # legitimate race — user tapped the app moments before pressing the
+       # physical button. Adopt the cycle the server already has.
+       cycle_id = response.active_cycle_id
+       continue with progress packets against cycle_id
+   else:
+       # the prior cycle is stuck. Retry with force.
+       POST /washing/device-start  {"mode": ..., "force": true}
+```
+
+This handles all three race patterns cleanly:
+- App-first / device-second (within ~seconds) → device adopts, no destructive force.
+- Device-first / app-second → app gets the same 409 shape and can show the user "Wash is already running" instead of an error.
+- Truly simultaneous → the server holds a per-device advisory lock around the start path, so exactly one start wins; the other gets the 409 shape above. No more dual-insert risk.
+
+#### Recovery from a stuck cycle
+
+A cycle can get stuck in `pending`/`running` if the firmware crashed
+mid-cycle, lost network before sending its completion packet, or never
+came back online. There are two recovery paths — both supported:
+
+1. **Firmware-driven (immediate):** retry with `"force": true`. The
+   stuck cycle is flipped to `failed` and the new cycle is created in
+   the same call. The WS broadcast that goes to app clients includes a
+   `superseded_cycle_id` field so the app can clean up any state
+   pinned to the old cycle id.
+
+   ```json
+   { "mode": "full_cycle", "force": true }
+   ```
+
+2. **Server-driven (safety net):** every 5 minutes a scheduler job
+   auto-fails any cycle that's been in `pending` or `running` state for
+   more than **60 minutes** (longer than the longest legitimate wash).
+   This guarantees nothing stays stuck forever, even if the firmware
+   never gets a chance to retry.
+
+The HTTP-side `POST /washing/start` (app path) intentionally does *not*
+support `force`. Cleanup from the app side is meant to be explicit so
+users don't accidentally cancel a wash that's still running on the
+machine.
 
 ---
 
@@ -713,13 +811,14 @@ Content-Type: application/json
 Request body:
 
 ```json
-{ "temperature_c": 37.0, "volume_ml": 120 }
+{ "temperature_c": 37.0, "volume_ml": 120, "force": false }
 ```
 
 | Field | Required | Type | Notes |
 |-------|----------|------|-------|
 | `temperature_c` | Yes | float | 20.0 – 45.0 (safe milk range). |
 | `volume_ml` | Yes | float | 10.0 – 300.0. |
+| `force` | No | bool | Default `false`. When `true`, any prior pending/dispensing log on this device is force-failed. Same recovery semantics as §4h. |
 
 Response `201 Created`:
 
@@ -741,11 +840,30 @@ Store `id` locally — that's the `log_id` you echo back in subsequent
 `POST /dispensing/progress` calls (see §4b).
 
 **Concurrency rule:** same as §4h. A device can have only one active
-dispense at a time; otherwise `409 Conflict`:
+dispense at a time; otherwise `409 Conflict` with details about the
+active log:
 
 ```json
-{ "detail": "A dispense is already active on this device. Wait for it to finish before starting another." }
+{
+  "detail": "A dispense is already active on this device. If it's stale, resend with `force: true`; if it just started (see active_log_created_at), adopt its `active_log_id` for subsequent progress packets.",
+  "active_log_id": 17,
+  "active_log_created_at": "2026-05-28T22:42:00",
+  "active_log_initiated_by": "app",
+  "active_log_status": "pending",
+  "active_log_temperature_c": 37.0,
+  "active_log_volume_ml": 120.0
+}
 ```
+
+Apply the same adopt-vs-force logic as §4h: if `active_log_created_at`
+is within the last few seconds, adopt the existing `active_log_id` for
+your progress packets; otherwise force a replacement.
+
+**Stale safety net:** the same scheduler job that recovers stuck wash
+cycles also recovers stuck dispense logs. The dispense timeout is
+**15 minutes** (much tighter than wash because dispensing is short).
+Any dispense in `pending`/`dispensing` state for longer than that gets
+auto-flipped to `failed`.
 
 ---
 
@@ -837,3 +955,7 @@ Where `AA:BB:CC:DD:EE:FF` is the device MAC address. The app uses this to pre-fi
 | 2026-05-24 | Device API keys are now stored as SHA-256 hashes server-side. The plaintext key the firmware sends is unchanged — no firmware update required. |
 | 2026-05-25 | Added §4f `POST /metrics/` and §4g `POST /activity/` documentation, plus a §3 explanation of why `cycle_id` / `log_id` are required on progress updates. |
 | 2026-05-26 | Added §4h `POST /washing/device-start` and §4i `POST /dispensing/device-start` — device-initiated paths for when the user operates the physical machine directly. Server enforces only one active wash/dispense per device (`409 Conflict` otherwise). New `initiated_by` field in cycle/log responses. |
+| 2026-05-28 | WS no longer echoes the sender's own events. |
+| 2026-05-28 | WS events `wash_progress`, `dispense_progress`, `alert`, `metric` now **persist to the database** (full parity with the equivalent HTTP routes). Validation failures return an `error` frame to the sender and are not broadcast. WS `alert` now requires `alert_type` from the §4e catalog. |
+| 2026-05-28 | Stuck-cycle recovery: `/washing/device-start` and `/dispensing/device-start` accept `force: true` to abandon a prior pending/running operation and start fresh. Scheduler also auto-fails wash cycles stale > 60 min and dispenses stale > 15 min. App-path `/washing/start` and `/dispensing/` stay strict (no force). |
+| 2026-05-28 | 409 responses on every start endpoint now include `active_cycle_id`/`active_log_id` plus `*_started_at`/`*_created_at`, `*_initiated_by`, `*_status` so the firmware can adopt the existing operation instead of always force-replacing. Server also holds a per-device MySQL advisory lock around the check-then-insert path to eliminate the TOCTOU race when two starts arrive simultaneously. |

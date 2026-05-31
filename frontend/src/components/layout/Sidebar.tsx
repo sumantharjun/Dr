@@ -1,7 +1,6 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
-  Cpu,
   Droplets,
   Settings2,
   Bell,
@@ -17,7 +16,6 @@ import { clsx } from "clsx";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/devices", label: "Device", icon: Cpu },
   { to: "/feeding", label: "Feeding", icon: Droplets },
   { to: "/controls", label: "Controls", icon: Settings2 },
   { to: "/alerts", label: "Alerts", icon: Bell },

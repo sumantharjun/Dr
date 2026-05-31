@@ -19,6 +19,12 @@ class MilkDispenseLog(Base):
     # Who initiated the dispense — app user via /dispensing/, or the device
     # itself via /dispensing/device-start (physical controls on the machine).
     initiated_by = Column(Enum("app", "device"), nullable=False, default="app")
+    # Why the dispense reached a terminal state. NULL while still
+    # pending/dispensing. See WashingCycle.ended_reason for rationale.
+    ended_reason = Column(
+        Enum("completed", "cancelled", "timed_out", "superseded", "failed"),
+        nullable=True,
+    )
     created_at = Column(DateTime, default=now_ist)
     completed_at = Column(DateTime, nullable=True)
 

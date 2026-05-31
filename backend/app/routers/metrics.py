@@ -9,6 +9,7 @@ from app.models.device import Device
 from app.models.metrics import DeviceMetrics
 from app.models.user import User
 from app.schemas.metrics import MetricsCreate, MetricsOut, MetricsSummary
+from app.services.metrics_ops import record_metric
 from app.utils.dependencies import get_current_user, get_device_by_api_key
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
@@ -24,20 +25,14 @@ def submit_metrics(
     db: Session = Depends(get_db),
 ):
     """Called by device firmware after each wash cycle to report actual consumption."""
-    if device.id != body.device_id:
-        raise HTTPException(status_code=403, detail="API key does not match device_id")
-    if body.power_kwh < 0 or body.water_liters < 0:
-        raise HTTPException(status_code=400, detail="Metric values must be non-negative")
-    record = DeviceMetrics(
-        device_id=body.device_id,
-        cycle_id=body.cycle_id,
+    return record_metric(
+        db=db,
+        device=device,
         power_kwh=body.power_kwh,
         water_liters=body.water_liters,
+        cycle_id=body.cycle_id,
+        body_device_id=body.device_id,
     )
-    db.add(record)
-    db.commit()
-    db.refresh(record)
-    return record
 
 
 @router.get("/history", response_model=List[MetricsOut])

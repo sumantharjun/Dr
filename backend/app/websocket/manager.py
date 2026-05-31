@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import WebSocket
 
@@ -26,12 +26,26 @@ class ConnectionManager:
             if not self.active_connections[device_id]:
                 del self.active_connections[device_id]
 
-    async def broadcast_to_device(self, device_id: str, message: dict) -> None:
+    async def broadcast_to_device(
+        self,
+        device_id: str,
+        message: dict,
+        exclude: Optional[WebSocket] = None,
+    ) -> None:
+        """
+        Send `message` to every socket subscribed to this device's room.
+
+        Pass `exclude=<socket>` to skip the originating sender — this is what
+        prevents a device's `wash_progress` event from being echoed straight
+        back to the device that sent it.
+        """
         if device_id not in self.active_connections:
             return
         dead: list[WebSocket] = []
         payload = json.dumps(message)
         for ws in list(self.active_connections[device_id]):
+            if ws is exclude:
+                continue
             try:
                 await ws.send_text(payload)
             except Exception:

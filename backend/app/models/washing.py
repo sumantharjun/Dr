@@ -20,6 +20,14 @@ class WashingCycle(Base):
     # Who initiated the cycle — app user via /washing/start, or the device
     # itself via /washing/device-start (physical button on the machine).
     initiated_by = Column(Enum("app", "device"), nullable=False, default="app")
+    # Why the cycle reached a terminal state. NULL while still pending/running.
+    # Disambiguates the overloaded `failed` status: a real hardware failure, a
+    # user/app cancel, the timeout sweep giving up, or a force-supersede all
+    # used to be indistinguishable.
+    ended_reason = Column(
+        Enum("completed", "cancelled", "timed_out", "superseded", "failed"),
+        nullable=True,
+    )
     started_at = Column(DateTime, default=now_ist)
     completed_at = Column(DateTime, nullable=True)
 

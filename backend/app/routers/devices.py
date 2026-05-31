@@ -13,7 +13,11 @@ from app.models.user import User
 from app.schemas.device import DeviceCommand, DeviceCreate, DeviceOut, DeviceWithKeyOut
 from sqlalchemy import or_
 
+from app.services.alerts_ops import create_device_alert
 from app.services.commands import dispatch_command
+from app.services.dispensing_ops import apply_dispense_progress
+from app.services.metrics_ops import record_metric
+from app.services.washing_ops import apply_wash_progress
 from app.utils.dependencies import get_current_user, get_device_by_api_key
 from app.utils.security import decode_token, hash_api_key
 from app.utils.timezone import now_ist
@@ -25,7 +29,103 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 
 VALID_COMMANDS = {"start_wash", "stop_wash", "dispense", "stop_dispense", "reboot", "status"}
 ALLOWED_WS_EVENT_TYPES = {"wash_progress", "dispense_progress", "alert", "status", "metric", "weight_report"}
+# Subset of ALLOWED_WS_EVENT_TYPES that persists to the database. Anything not
+# in this set is treated as ephemeral (live-only) and only broadcast.
+PERSISTABLE_WS_EVENT_TYPES = {"wash_progress", "dispense_progress", "alert", "metric"}
 WS_IDLE_TIMEOUT = 300  # 5 min — device must send something or server pings
+
+
+def _persist_ws_event(
+    db: Session,
+    device: Device,
+    event: dict,
+) -> tuple[bool, Optional[dict]]:
+    """
+    Persist a device-originated WebSocket event using the same helpers that
+    back the HTTP routes. Returns (ok, error_frame).
+
+    - ok=True, error_frame=None  → caller should broadcast the event
+    - ok=False, error_frame=dict → caller should send the error frame back to
+      the originating socket and SKIP the broadcast (don't propagate
+      garbage to app clients)
+    - For event types not in PERSISTABLE_WS_EVENT_TYPES, always returns
+      (True, None) — they're ephemeral and only need broadcasting.
+    """
+    etype = event.get("type")
+    if etype not in PERSISTABLE_WS_EVENT_TYPES:
+        return True, None
+
+    try:
+        if etype == "wash_progress":
+            apply_wash_progress(
+                db=db,
+                device=device,
+                cycle_id=event.get("cycle_id"),
+                status=event.get("status"),
+                progress_pct=event.get("progress_pct"),
+            )
+        elif etype == "dispense_progress":
+            apply_dispense_progress(
+                db=db,
+                device=device,
+                log_id=event.get("log_id"),
+                status=event.get("status"),
+                progress_pct=event.get("progress_pct"),
+            )
+        elif etype == "alert":
+            # Accept either flat fields (preferred) or nested under "payload"
+            # for backward compatibility with the original WS spec.
+            payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+            alert_type = event.get("alert_type") or payload.get("alert_type")
+            message = event.get("message") or payload.get("message")
+            severity = event.get("severity") or payload.get("severity")
+            if not alert_type:
+                raise HTTPException(
+                    status_code=422,
+                    detail="alert_type is required (see DEVICE_API.md §4e for the closed set)",
+                )
+            create_device_alert(
+                db=db,
+                device=device,
+                alert_type=alert_type,
+                message=message or "",
+                severity=severity,
+            )
+        elif etype == "metric":
+            payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+            power_kwh = event.get("power_kwh") if event.get("power_kwh") is not None else payload.get("power_kwh")
+            water_liters = event.get("water_liters") if event.get("water_liters") is not None else payload.get("water_liters")
+            cycle_id = event.get("cycle_id") if event.get("cycle_id") is not None else payload.get("cycle_id")
+            if power_kwh is None or water_liters is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="metric event requires power_kwh and water_liters",
+                )
+            record_metric(
+                db=db,
+                device=device,
+                power_kwh=power_kwh,
+                water_liters=water_liters,
+                cycle_id=cycle_id,
+            )
+        return True, None
+    except HTTPException as e:
+        return False, {
+            "type": "error",
+            "for": etype,
+            "status_code": e.status_code,
+            "detail": e.detail,
+            "original": event,
+        }
+    except Exception as e:
+        logger.exception("WS persistence failed for event type %s", etype)
+        return False, {
+            "type": "error",
+            "for": etype,
+            "status_code": 500,
+            "detail": f"Internal error while processing {etype}",
+            "original": event,
+        }
 
 
 @router.get("/commands/pending")
@@ -291,7 +391,24 @@ async def websocket_endpoint(
             device.last_seen = now_ist()
             db.commit()
 
-            await manager.broadcast_to_device(str(device_id), event)
+            # Persist state-changing events through the same helpers the HTTP
+            # routes use, so WS and HTTP transports stay in lockstep. Ephemeral
+            # events (weight_report, status) skip persistence.
+            ok, error_frame = _persist_ws_event(db, device, event)
+
+            if not ok and error_frame is not None:
+                # Validation/lookup failure: tell the sender, don't fan out
+                # broken state to the app.
+                try:
+                    await websocket.send_text(json.dumps(error_frame))
+                except Exception:
+                    pass
+                continue
+
+            # Fan the event out to OTHER clients in this device's room (e.g.
+            # the user's app). The originating socket is excluded so the
+            # device doesn't see its own event echoed back.
+            await manager.broadcast_to_device(str(device_id), event, exclude=websocket)
 
     except WebSocketDisconnect:
         pass

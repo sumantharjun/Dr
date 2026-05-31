@@ -114,6 +114,34 @@ try:
 except Exception:
     logging.getLogger(__name__).exception("initiated_by migration failed")
 
+
+def _migrate_ended_reason() -> None:
+    """
+    Idempotent: add a nullable `ended_reason` ENUM column to both
+    washing_cycles and milk_dispense_logs. Disambiguates the overloaded
+    `failed` status (real failure vs. cancel vs. timeout vs. force-supersede).
+    Existing rows are left NULL — we can't retroactively know why they ended.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    for table in ("washing_cycles", "milk_dispense_logs"):
+        columns = {c["name"] for c in inspector.get_columns(table)}
+        if "ended_reason" in columns:
+            continue
+        with engine.begin() as conn:
+            conn.execute(text(
+                f"ALTER TABLE {table} ADD COLUMN ended_reason "
+                f"ENUM('completed','cancelled','timed_out','superseded','failed') NULL"
+            ))
+        logger.info("Added ended_reason column to %s", table)
+
+
+try:
+    _migrate_ended_reason()
+except Exception:
+    logging.getLogger(__name__).exception("ended_reason migration failed")
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -244,6 +272,89 @@ async def check_feeding_reminders() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Scheduled job: auto-fail stale wash cycles + dispenses (every 5 minutes)
+#
+# Prevents the "stuck pending/running" state — if firmware crashes mid-cycle
+# or never sends a completion packet, the row would otherwise block the 409
+# concurrency guard on /washing/device-start indefinitely. After the timeout
+# the row is force-flipped to `failed` so the next device-start call can
+# proceed without `force=true`.
+# ---------------------------------------------------------------------------
+WASH_STALE_TIMEOUT_MIN = 60     # wash cycles longer than this are presumed stuck
+DISPENSE_STALE_TIMEOUT_MIN = 15  # dispense ops are short — much tighter window
+
+
+def auto_fail_stale_operations() -> None:
+    from sqlalchemy import update
+    from app.models.washing import WashingCycle
+    from app.models.dispensing import MilkDispenseLog
+
+    db = SessionLocal()
+    try:
+        now = now_ist()
+        wash_cutoff = now - timedelta(minutes=WASH_STALE_TIMEOUT_MIN)
+        disp_cutoff = now - timedelta(minutes=DISPENSE_STALE_TIMEOUT_MIN)
+
+        # SELECT first purely for per-row logging, then recover with a single
+        # atomic conditional UPDATE. The UPDATE re-checks the status filter at
+        # write time, so any row a concurrent progress packet drove terminal
+        # between this SELECT and the UPDATE is excluded (no lost update).
+        stale_cycles = (
+            db.query(WashingCycle.id, WashingCycle.started_at)
+            .filter(
+                WashingCycle.status.in_(["pending", "running"]),
+                WashingCycle.started_at < wash_cutoff,
+            )
+            .all()
+        )
+        for cid, started_at in stale_cycles:
+            logger.info("Auto-failing stale wash cycle id=%s (started_at=%s)", cid, started_at)
+
+        wash_result = db.execute(
+            update(WashingCycle)
+            .where(
+                WashingCycle.status.in_(["pending", "running"]),
+                WashingCycle.started_at < wash_cutoff,
+            )
+            .values(status="failed", ended_reason="timed_out", completed_at=now)
+            .execution_options(synchronize_session=False)
+        )
+
+        stale_dispenses = (
+            db.query(MilkDispenseLog.id, MilkDispenseLog.created_at)
+            .filter(
+                MilkDispenseLog.status.in_(["pending", "dispensing"]),
+                MilkDispenseLog.created_at < disp_cutoff,
+            )
+            .all()
+        )
+        for did, created_at in stale_dispenses:
+            logger.info("Auto-failing stale dispense log id=%s (created_at=%s)", did, created_at)
+
+        disp_result = db.execute(
+            update(MilkDispenseLog)
+            .where(
+                MilkDispenseLog.status.in_(["pending", "dispensing"]),
+                MilkDispenseLog.created_at < disp_cutoff,
+            )
+            .values(status="failed", ended_reason="timed_out", completed_at=now)
+            .execution_options(synchronize_session=False)
+        )
+
+        db.commit()
+        if wash_result.rowcount or disp_result.rowcount:
+            logger.info(
+                "Auto-fail sweep: %s wash cycle(s), %s dispense(s) recovered",
+                wash_result.rowcount, disp_result.rowcount,
+            )
+    except Exception:
+        logger.exception("auto_fail_stale_operations failed")
+        db.rollback()
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
 # Scheduled job: order auto-progression (every 2 minutes)
 # pending → confirmed  at  2 min from creation
 # confirmed → shipped  at 10 min from creation
@@ -296,7 +407,7 @@ def seed_products():
                 Product(name="Baby Bottle Cleaning Liquid 1L", description="Economy size cleaning liquid for baby bottles.", price=499.0, category="cleaning", stock=50),
                 Product(name="Baby Bottle 240ml (Pack of 3)", description="BPA-free wide-neck baby bottles.", price=699.0, category="bottles", stock=80),
                 Product(name="Bottle Brush Set", description="Soft-bristle brush set for manual cleaning.", price=249.0, category="accessories", stock=60),
-                Product(name="Sterilization Tablets (50 pack)", description="Effervescent sterilization tablets.", price=349.0, category="cleaning", stock=120),
+                Product(name="Sterilization Pods (50 pack)", description="Effervescent sterilization pods.", price=349.0, category="cleaning", stock=120),
                 Product(name="Baby Bottle Nipples Size M (4 pack)", description="Medium-flow silicone nipples.", price=199.0, category="accessories", stock=90),
             ]
             db.add_all(products)
@@ -317,6 +428,10 @@ async def start_scheduler():
     scheduler.add_job(
         progress_orders, "interval", minutes=2,
         id="order_progression", replace_existing=True,
+    )
+    scheduler.add_job(
+        auto_fail_stale_operations, "interval", minutes=2,
+        id="auto_fail_stale_ops", replace_existing=True,
     )
     scheduler.start()
     logger.info("Scheduler started with %d jobs", len(scheduler.get_jobs()))
