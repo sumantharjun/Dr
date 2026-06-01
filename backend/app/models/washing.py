@@ -10,8 +10,11 @@ class WashingCycle(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     device_id = Column(Integer, ForeignKey("devices.id"), nullable=False, index=True)
+    # Allowed wash modes (matches VALID_MODES in routers/washing.py). The old
+    # modes wash/deep_clean/dispense were removed per the firmware spec.
     mode = Column(
-        Enum("full_cycle", "wash", "deep_clean", "dispense"), nullable=False
+        Enum("full_cycle", "steam_dry", "dry"),
+        nullable=False,
     )
     status = Column(
         Enum("pending", "running", "completed", "failed"), default="pending"

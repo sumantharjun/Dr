@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
-VALID_COMMANDS = {"start_wash", "stop_wash", "dispense", "stop_dispense", "reboot", "status"}
+VALID_COMMANDS = {"start_wash", "stop_wash", "dispense", "stop_dispense", "uv_start", "reboot", "status"}
 ALLOWED_WS_EVENT_TYPES = {"wash_progress", "dispense_progress", "alert", "status", "metric", "weight_report"}
 # Subset of ALLOWED_WS_EVENT_TYPES that persists to the database. Anything not
 # in this set is treated as ephemeral (live-only) and only broadcast.
@@ -93,14 +93,11 @@ def _persist_ws_event(
             )
         elif etype == "metric":
             payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+            # power/water are optional — this firmware has no flow/energy
+            # meters. record_metric treats missing values as 0.0.
             power_kwh = event.get("power_kwh") if event.get("power_kwh") is not None else payload.get("power_kwh")
             water_liters = event.get("water_liters") if event.get("water_liters") is not None else payload.get("water_liters")
             cycle_id = event.get("cycle_id") if event.get("cycle_id") is not None else payload.get("cycle_id")
-            if power_kwh is None or water_liters is None:
-                raise HTTPException(
-                    status_code=422,
-                    detail="metric event requires power_kwh and water_liters",
-                )
             record_metric(
                 db=db,
                 device=device,
@@ -179,6 +176,19 @@ def fetch_pending_commands(
     device.status = "online"
     db.commit()
     return out
+
+
+@router.get("/me", response_model=DeviceOut)
+def get_my_device(
+    device: Device = Depends(get_device_by_api_key),
+):
+    """
+    Return the device associated with the supplied `X-Device-Api-Key`.
+
+    Lets firmware fetch its own `device_id`/identity from the key alone, with no
+    app login. (Declared before `/{device_id}` so "me" isn't parsed as an id.)
+    """
+    return device
 
 
 @router.get("/", response_model=List[DeviceOut])

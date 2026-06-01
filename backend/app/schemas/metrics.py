@@ -4,18 +4,21 @@ from pydantic import BaseModel
 
 
 class MetricsCreate(BaseModel):
-    device_id: int
+    # Optional — derived from the X-Device-Api-Key. If supplied it must match
+    # the key's device (else 403); kept for backward compatibility.
+    device_id: Optional[int] = None
     cycle_id: Optional[int] = None
-    power_kwh: float
-    water_liters: float
+    # Optional — firmware without flow/energy meters won't send these.
+    power_kwh: Optional[float] = None
+    water_liters: Optional[float] = None
 
 
 class MetricsOut(BaseModel):
     id: int
     device_id: int
     cycle_id: Optional[int]
-    power_kwh: float
-    water_liters: float
+    power_kwh: Optional[float] = None
+    water_liters: Optional[float] = None
     recorded_at: datetime
 
     model_config = {"from_attributes": True}

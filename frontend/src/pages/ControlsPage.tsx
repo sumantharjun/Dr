@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Settings2, Droplet, Wind, Zap, FlaskConical, Thermometer, Square } from "lucide-react";
+import { Settings2, Wind, Zap, Thermometer, Square, Sparkles } from "lucide-react";
 import api from "../services/api";
 import { Device, WashingCycle, DispenseLog } from "../types";
 import { format, formatDistanceToNow } from "date-fns";
@@ -8,9 +8,8 @@ import { useWsEventStore } from "../store/wsEventStore";
 
 const WASH_MODES = [
   { id: "full_cycle",  label: "Full Cycle",  description: "Wash, Dry, Sterilize & Fill", icon: Zap,         color: "border-primary-300 hover:border-primary-500 hover:bg-primary-50",  activeColor: "border-primary-500 bg-primary-50"  },
-  { id: "wash",        label: "Wash",        description: "Basic washing cycle",          icon: Droplet,     color: "border-blue-300 hover:border-blue-500 hover:bg-blue-50",           activeColor: "border-blue-500 bg-blue-50"         },
-  { id: "deep_clean",  label: "Deep Clean",  description: "Wash, Dry & Sterilize",        icon: Wind,        color: "border-green-300 hover:border-green-500 hover:bg-green-50",        activeColor: "border-green-500 bg-green-50"       },
-  { id: "dispense",    label: "Dispense",    description: "Dispense milk into bottle",    icon: FlaskConical, color: "border-yellow-300 hover:border-yellow-500 hover:bg-yellow-50",  activeColor: "border-yellow-500 bg-yellow-50"     },
+  { id: "steam_dry",   label: "Steam & Dry", description: "Steam clean, then dry",        icon: Wind,        color: "border-green-300 hover:border-green-500 hover:bg-green-50",        activeColor: "border-green-500 bg-green-50"       },
+  { id: "dry",         label: "Dry",         description: "Dry only",                     icon: Thermometer, color: "border-blue-300 hover:border-blue-500 hover:bg-blue-50",           activeColor: "border-blue-500 bg-blue-50"         },
 ];
 
 export default function ControlsPage() {
@@ -19,10 +18,11 @@ export default function ControlsPage() {
   const [selectedMode, setSelectedMode] = useState<string>("");
   const [washHistory, setWashHistory] = useState<WashingCycle[]>([]);
   const [dispenseHistory, setDispenseHistory] = useState<DispenseLog[]>([]);
-  const [dispense, setDispense] = useState({ temperature_c: "37", volume_ml: "120" });
+  const [dispense, setDispense] = useState({ temperature_c: "37", volume_ml: "120", scoop_number: "" });
   const [washLoading, setWashLoading] = useState(false);
   const [dispenseLoading, setDispenseLoading] = useState(false);
   const [stopLoading, setStopLoading] = useState<"wash" | "dispense" | null>(null);
+  const [uvLoading, setUvLoading] = useState(false);
 
   const { addToast } = useToastStore();
 
@@ -141,6 +141,20 @@ export default function ControlsPage() {
     }
   }
 
+  async function handleUvStart() {
+    if (!selectedDevice) return;
+    setUvLoading(true);
+    try {
+      await api.post(`/devices/${selectedDevice}/command`, { command: "uv_start" });
+      addToast("UV sterilization started", "info");
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      addToast(msg || "Failed to start UV sterilization", "error");
+    } finally {
+      setUvLoading(false);
+    }
+  }
+
   async function handleDispense() {
     if (!selectedDevice) return;
     const temp = Number(dispense.temperature_c);
@@ -149,12 +163,19 @@ export default function ControlsPage() {
       addToast("Enter valid temperature and volume", "error");
       return;
     }
+    // Scoops is optional — only send it if the user entered a value.
+    const scoops = dispense.scoop_number.trim() === "" ? null : Number(dispense.scoop_number);
+    if (scoops !== null && (isNaN(scoops) || scoops < 0)) {
+      addToast("Enter a valid scoop count", "error");
+      return;
+    }
     setDispenseLoading(true);
     try {
       const { data } = await api.post("/dispensing/", {
         device_id: selectedDevice,
         temperature_c: temp,
         volume_ml: vol,
+        scoop_number: scoops,
       });
       useWsEventStore.getState().setDispenseProgress(selectedDevice, {
         log_id: data.id,
@@ -401,6 +422,15 @@ export default function ControlsPage() {
           >
             {washLoading ? "Starting…" : washIsActive ? "Cycle running…" : "Start Wash Cycle"}
           </button>
+          <button
+            onClick={handleUvStart}
+            disabled={!selectedDevice || uvLoading}
+            title="Send a UV sterilization start command to the device"
+            className="w-full mt-2 flex items-center justify-center gap-2 border border-purple-300 text-purple-700 hover:bg-purple-50 disabled:opacity-50 py-2.5 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Sparkles className="w-4 h-4" />
+            {uvLoading ? "Starting UV…" : "Start UV Sterilization"}
+          </button>
         </div>
 
         {/* Milk Dispense */}
@@ -431,6 +461,20 @@ export default function ControlsPage() {
                 disabled={dispenseIsActive}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none disabled:opacity-50"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Scoops <span className="text-gray-400 text-xs">(optional)</span>
+              </label>
+              <input
+                type="number" min="0" max="20" step="1"
+                value={dispense.scoop_number}
+                onChange={(e) => setDispense({ ...dispense, scoop_number: e.target.value })}
+                disabled={dispenseIsActive}
+                placeholder="e.g. 2"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none disabled:opacity-50"
+              />
+              <p className="text-xs text-gray-400 mt-1">Number of formula scoops</p>
             </div>
           </div>
           <button
@@ -499,6 +543,7 @@ export default function ControlsPage() {
                 <tr className="text-xs text-gray-500 uppercase border-b border-gray-100">
                   <th className="px-5 py-3 text-left">Volume</th>
                   <th className="px-5 py-3 text-left">Temp</th>
+                  <th className="px-5 py-3 text-left">Scoops</th>
                   <th className="px-5 py-3 text-left">Status</th>
                   <th className="px-5 py-3 text-left">Time</th>
                 </tr>
@@ -508,6 +553,7 @@ export default function ControlsPage() {
                   <tr key={d.id} className="border-b border-gray-50">
                     <td className="px-5 py-3 font-medium text-gray-800">{d.volume_ml} ml</td>
                     <td className="px-5 py-3 text-gray-600">{d.temperature_c}°C</td>
+                    <td className="px-5 py-3 text-gray-600">{d.scoop_number ?? "—"}</td>
                     <td className="px-5 py-3"><StatusBadge status={d.status} /></td>
                     <td className="px-5 py-3 text-gray-500">{format(new Date(d.created_at), "dd MMM, HH:mm")}</td>
                   </tr>

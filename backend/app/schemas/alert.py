@@ -9,7 +9,9 @@ VALID_SEVERITIES = {"info", "warning", "error", "critical"}
 
 
 class AlertCreate(BaseModel):
-    device_id: int
+    # Optional — derived from the X-Device-Api-Key. Validated against the key's
+    # device if supplied (403 on mismatch); kept for backward compatibility.
+    device_id: Optional[int] = None
     alert_type: str
     message: str
     severity: Optional[str] = None  # If None, server fills from catalog default

@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class WashingStart(BaseModel):
     device_id: int
-    mode: str  # full_cycle, wash, deep_clean, dispense
+    mode: str  # full_cycle, steam_dry, dry
     # Set force=true to supersede a cycle still stuck pending/running (it will
     # be marked failed with ended_reason='superseded'). Lets an app user
     # recover from a stuck state without waiting for the timeout sweep.

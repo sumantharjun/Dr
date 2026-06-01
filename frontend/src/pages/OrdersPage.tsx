@@ -157,8 +157,25 @@ export default function OrdersPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {filtered.map((p) => (
                 <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="w-full h-32 bg-gray-100 rounded-lg mb-3 flex items-center justify-center">
-                    <Package className="w-10 h-10 text-gray-300" />
+                  <div className="w-full h-32 bg-gray-50 rounded-lg mb-3 overflow-hidden flex items-center justify-center">
+                    {p.image_url ? (
+                      <img
+                        src={p.image_url}
+                        alt={p.name}
+                        loading="lazy"
+                        className="w-full h-full object-contain"
+                        onError={(e) => {
+                          // Fallback to the generic icon if the image fails to load.
+                          e.currentTarget.style.display = "none";
+                          e.currentTarget.insertAdjacentHTML(
+                            "afterend",
+                            '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="2"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>'
+                          );
+                        }}
+                      />
+                    ) : (
+                      <Package className="w-10 h-10 text-gray-300" />
+                    )}
                   </div>
                   <p className="font-semibold text-gray-900 text-sm mb-1">{p.name}</p>
                   {p.description && (

@@ -41,7 +41,8 @@ class ActivityOut(BaseModel):
 
 
 class ActivityCreate(BaseModel):
-    device_id: int
+    # Optional — derived from the X-Device-Api-Key. Validated if supplied.
+    device_id: int | None = None
     event_type: str
     description: str | None = None
 
@@ -68,11 +69,14 @@ def log_activity(
     device: Device = Depends(get_device_by_api_key),
     db: Session = Depends(get_db),
 ):
-    """Device firmware calls this to log events (e.g. wash_started, network_reconnected)."""
-    if device.id != body.device_id:
+    """Device firmware calls this to log events (e.g. wash_started, network_reconnected).
+
+    device_id is derived from the API key; if supplied in the body it must match.
+    """
+    if body.device_id is not None and body.device_id != device.id:
         raise HTTPException(status_code=403, detail="API key does not match device_id")
     log = DeviceActivityLog(
-        device_id=body.device_id,
+        device_id=device.id,
         event_type=body.event_type,
         description=body.description,
     )

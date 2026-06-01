@@ -142,6 +142,84 @@ try:
 except Exception:
     logging.getLogger(__name__).exception("ended_reason migration failed")
 
+
+def _migrate_firmware_spec() -> None:
+    """
+    Idempotent migrations for the firmware-team spec changes:
+      - washing_cycles.mode ENUM widened to the superset (adds steam_dry, dry;
+        keeps legacy wash/deep_clean/dispense so historical rows stay valid).
+      - milk_dispense_logs.scoop_number INT NULL added.
+      - device_metrics power_kwh / water_liters made nullable (firmware has no
+        flow/energy meters, so the API no longer requires them).
+    Each step is guarded so it only runs when needed. No-ops on SQLite (which
+    lacks MODIFY COLUMN / ENUM) are caught per-step.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    is_mysql = engine.dialect.name == "mysql"
+
+    # 1) Update washing_cycles.mode ENUM to the allowed set {full_cycle,
+    #    steam_dry, dry}, dropping the removed modes (wash, deep_clean,
+    #    dispense). MySQL-only — ENUM/MODIFY are MySQL syntax; on SQLite the
+    #    column is created from the model definition, so nothing to do.
+    #    NOTE: narrowing the ENUM is destructive — any existing rows still on a
+    #    removed mode (wash/deep_clean/dispense) will be set to '' by MySQL.
+    if is_mysql:
+        try:
+            mode_col = next(
+                (c for c in inspector.get_columns("washing_cycles") if c["name"] == "mode"),
+                None,
+            )
+            type_str = str(mode_col["type"]).lower() if mode_col else ""
+            needs = mode_col is not None and (
+                "steam_dry" not in type_str   # pre-firmware enum: add new modes
+                or "deep_clean" in type_str   # still carries removed modes
+                or "dispense" in type_str
+                or "wash" in type_str
+            )
+            if needs:
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE washing_cycles MODIFY COLUMN mode "
+                        "ENUM('full_cycle','steam_dry','dry') NOT NULL"
+                    ))
+                logger.info("Updated washing_cycles.mode ENUM to {full_cycle, steam_dry, dry}")
+        except Exception:
+            logger.exception("mode ENUM migration failed/skipped")
+
+    # 2) Add milk_dispense_logs.scoop_number (portable ADD COLUMN).
+    try:
+        cols = {c["name"] for c in inspector.get_columns("milk_dispense_logs")}
+        if "scoop_number" not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE milk_dispense_logs ADD COLUMN scoop_number INT NULL"))
+            logger.info("Added scoop_number column to milk_dispense_logs")
+    except Exception:
+        logger.exception("scoop_number migration failed/skipped")
+
+    # 3) Make device_metrics power_kwh / water_liters nullable (MySQL-only;
+    #    MODIFY COLUMN is MySQL syntax).
+    if is_mysql:
+        try:
+            for col in ("power_kwh", "water_liters"):
+                meta = next(
+                    (c for c in inspector.get_columns("device_metrics") if c["name"] == col),
+                    None,
+                )
+                if meta is not None and not meta["nullable"]:
+                    with engine.begin() as conn:
+                        conn.execute(text(f"ALTER TABLE device_metrics MODIFY COLUMN {col} FLOAT NULL"))
+                    logger.info("Made device_metrics.%s nullable", col)
+        except Exception:
+            logger.exception("device_metrics nullable migration failed/skipped")
+
+
+try:
+    _migrate_firmware_spec()
+except Exception:
+    logging.getLogger(__name__).exception("firmware_spec migration failed")
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -398,21 +476,56 @@ def progress_orders() -> None:
 # ---------------------------------------------------------------------------
 @app.on_event("startup")
 def seed_products():
+    """
+    Sync the product catalog (upsert by name) on startup.
+
+    PLACEHOLDER CATALOG: the client's real product images and costs haven't
+    been received yet. Prices are realistic current Indian-market figures
+    (INR) used as placeholders, and images are local bundled SVG placeholders
+    under frontend/public/products/. Replace both when the real catalog lands.
+
+    Upsert (rather than insert-only) so updated prices/images also apply to a
+    DB that was already seeded with the old values; existing stock is preserved.
+    """
     db = SessionLocal()
     try:
-        from app.models.order import Product
-        if db.query(Product).count() == 0:
-            products = [
-                Product(name="Baby Bottle Cleaning Liquid 500ml", description="Specially formulated cleaning liquid for baby bottles.", price=299.0, category="cleaning", stock=100),
-                Product(name="Baby Bottle Cleaning Liquid 1L", description="Economy size cleaning liquid for baby bottles.", price=499.0, category="cleaning", stock=50),
-                Product(name="Baby Bottle 240ml (Pack of 3)", description="BPA-free wide-neck baby bottles.", price=699.0, category="bottles", stock=80),
-                Product(name="Bottle Brush Set", description="Soft-bristle brush set for manual cleaning.", price=249.0, category="accessories", stock=60),
-                Product(name="Sterilization Pods (50 pack)", description="Effervescent sterilization pods.", price=349.0, category="cleaning", stock=120),
-                Product(name="Baby Bottle Nipples Size M (4 pack)", description="Medium-flow silicone nipples.", price=199.0, category="accessories", stock=90),
-            ]
-            db.add_all(products)
-            db.commit()
-            logger.info("Seeded %d products", len(products))
+        from app.models.order import Product, OrderItem
+
+        # Renamed products: upsert-by-name can't see a rename, so map any
+        # superseded name to its current one and fix it up first. We rename the
+        # existing row in place (preserving its id + order history) rather than
+        # leaving a stale duplicate behind.
+        renames = {"Sterilization Tablets (50 pack)": "Sterilization Pods (50 pack)"}
+        for old_name, new_name in renames.items():
+            old = db.query(Product).filter(Product.name == old_name).first()
+            if not old:
+                continue
+            if db.query(Product).filter(Product.name == new_name).first() is None:
+                old.name = new_name  # rename in place
+            elif not db.query(OrderItem).filter(OrderItem.product_id == old.id).first():
+                db.delete(old)        # a duplicate already exists & old one is unused
+            db.flush()
+
+        catalog = [
+            {"name": "Baby Bottle Cleaning Liquid 500ml", "description": "Specially formulated liquid cleanser for baby bottles, teats & accessories.", "price": 275.0, "category": "cleaning", "stock": 100, "image_url": "/products/cleaning-liquid-500ml.svg"},
+            {"name": "Baby Bottle Cleaning Liquid 1L", "description": "Economy 1L bottle & accessory cleanser.", "price": 485.0, "category": "cleaning", "stock": 50, "image_url": "/products/cleaning-liquid-1l.svg"},
+            {"name": "Baby Bottle 240ml (Pack of 3)", "description": "BPA-free wide-neck baby feeding bottles, 240ml.", "price": 599.0, "category": "bottles", "stock": 80, "image_url": "/products/baby_bottle.png"},
+            {"name": "Bottle Brush Set", "description": "Soft-bristle bottle & nipple brush set for manual cleaning.", "price": 249.0, "category": "accessories", "stock": 60, "image_url": "/products/bottle-brush-set.svg"},
+            {"name": "Sterilization Pods (50 pack)", "description": "Effervescent sterilizing pods, 50 pack.", "price": 399.0, "category": "cleaning", "stock": 120, "image_url": "/products/sterilization-pods.svg"},
+            {"name": "Baby Bottle Nipples Size M (4 pack)", "description": "Medium-flow anti-colic silicone nipples, 4 pack.", "price": 349.0, "category": "accessories", "stock": 90, "image_url": "/products/nipples-m-4pack.svg"},
+        ]
+        for item in catalog:
+            existing = db.query(Product).filter(Product.name == item["name"]).first()
+            if existing:
+                # Refresh catalog fields; leave on-hand stock untouched.
+                existing.description = item["description"]
+                existing.price = item["price"]
+                existing.category = item["category"]
+                existing.image_url = item["image_url"]
+            else:
+                db.add(Product(**item))
+        db.commit()
+        logger.info("Synced %d catalog products", len(catalog))
     except Exception:
         logger.exception("Failed to seed products")
     finally:

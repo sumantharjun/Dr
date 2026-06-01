@@ -12,6 +12,9 @@ class MilkDispenseLog(Base):
     device_id = Column(Integer, ForeignKey("devices.id"), nullable=False, index=True)
     temperature_c = Column(Float, nullable=False)
     volume_ml = Column(Float, nullable=False)
+    # Number of formula scoops for this dispense. Optional — older rows and
+    # clients that don't send it stay NULL.
+    scoop_number = Column(Integer, nullable=True)
     status = Column(
         Enum("pending", "dispensing", "completed", "failed"), default="pending"
     )

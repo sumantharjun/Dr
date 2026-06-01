@@ -23,7 +23,7 @@ from app.websocket.manager import manager
 
 router = APIRouter(prefix="/washing", tags=["washing"])
 
-VALID_MODES = {"full_cycle", "wash", "deep_clean", "dispense"}
+VALID_MODES = {"full_cycle", "steam_dry", "dry"}
 VALID_STATUSES = {"pending", "running", "completed", "failed"}
 
 

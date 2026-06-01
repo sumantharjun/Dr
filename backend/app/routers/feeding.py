@@ -44,6 +44,16 @@ async def create_feeding_log(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # If a device is referenced, it must belong to the caller. Otherwise a user
+    # could attach feeding logs to (and trigger alerts on) another user's
+    # device by guessing its id. device_id stays optional for manual feeds.
+    if body.device_id is not None:
+        device = db.query(Device).filter(
+            Device.id == body.device_id, Device.user_id == current_user.id
+        ).first()
+        if not device:
+            raise HTTPException(status_code=404, detail="Device not found")
+
     milk_ml = body.milk_consumed_ml
 
     if milk_ml is None and body.weight_before_g is not None and body.weight_after_g is not None:

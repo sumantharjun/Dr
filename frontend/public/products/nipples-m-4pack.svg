@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Silicone nipples, medium flow, 4 pack">
+  <rect width="400" height="300" fill="#fdeee3"/>
+  <g fill="#fb923c">
+    <g transform="translate(150 110)">
+      <ellipse cx="0" cy="14" rx="40" ry="20" fill="#f97316"/>
+      <path d="M-16 8 C-16 -34 16 -34 16 8 Z" fill="#fdba74"/>
+      <circle cx="0" cy="-26" r="6" fill="#ea580c"/>
+    </g>
+    <g transform="translate(250 132)">
+      <ellipse cx="0" cy="12" rx="34" ry="17" fill="#f97316"/>
+      <path d="M-13 7 C-13 -28 13 -28 13 7 Z" fill="#fdba74"/>
+      <circle cx="0" cy="-22" r="5" fill="#ea580c"/>
+    </g>
+  </g>
+  <text x="200" y="250" text-anchor="middle" font-family="system-ui,Segoe UI,Roboto,sans-serif" font-size="23" font-weight="700" fill="#c2410c">Silicone Nipples · M</text>
+  <text x="200" y="278" text-anchor="middle" font-family="system-ui,Segoe UI,Roboto,sans-serif" font-size="18" fill="#ea580c">Medium flow · Pack of 4</text>
+</svg>

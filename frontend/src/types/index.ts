@@ -42,7 +42,7 @@ export interface FeedingSchedule {
 export interface WashingCycle {
   id: number;
   device_id: number;
-  mode: "full_cycle" | "wash" | "deep_clean" | "dispense";
+  mode: "full_cycle" | "steam_dry" | "dry";
   status: "pending" | "running" | "completed" | "failed";
   progress_pct: number;
   started_at: string;
@@ -54,6 +54,7 @@ export interface DispenseLog {
   device_id: number;
   temperature_c: number;
   volume_ml: number;
+  scoop_number: number | null;
   status: "pending" | "dispensing" | "completed" | "failed";
   progress_pct: number;
   created_at: string;

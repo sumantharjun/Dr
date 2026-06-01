@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Sterilizing pods, 50 pack">
+  <rect width="400" height="300" fill="#e8f6ec"/>
+  <g>
+    <g transform="translate(160 110)">
+      <circle r="40" fill="#22c55e"/>
+      <circle r="40" fill="none" stroke="#16a34a" stroke-width="4"/>
+      <circle r="14" fill="#bbf7d0"/>
+    </g>
+    <g transform="translate(244 132)">
+      <circle r="34" fill="#4ade80"/>
+      <circle r="34" fill="none" stroke="#16a34a" stroke-width="4"/>
+      <circle r="11" fill="#dcfce7"/>
+    </g>
+    <g transform="translate(214 78)">
+      <circle r="24" fill="#86efac"/>
+      <circle r="24" fill="none" stroke="#16a34a" stroke-width="3"/>
+      <circle r="8" fill="#f0fdf4"/>
+    </g>
+  </g>
+  <text x="200" y="250" text-anchor="middle" font-family="system-ui,Segoe UI,Roboto,sans-serif" font-size="24" font-weight="700" fill="#15803d">Sterilizing Pods</text>
+  <text x="200" y="278" text-anchor="middle" font-family="system-ui,Segoe UI,Roboto,sans-serif" font-size="18" fill="#16a34a">Effervescent · 50 pack</text>
+</svg>

@@ -81,6 +81,7 @@ def _active_dispense_409(active: MilkDispenseLog, message: str) -> JSONResponse:
             "active_log_status": active.status,
             "active_log_temperature_c": active.temperature_c,
             "active_log_volume_ml": active.volume_ml,
+            "active_log_scoop_number": active.scoop_number,
         },
     )
 
@@ -115,6 +116,7 @@ async def dispense_milk(
             device_id=body.device_id,
             temperature_c=body.temperature_c,
             volume_ml=body.volume_ml,
+            scoop_number=body.scoop_number,
             status="pending",
             initiated_by="app",
         )
@@ -152,6 +154,7 @@ async def dispense_milk(
             "command": "dispense",
             "temperature_c": body.temperature_c,
             "volume_ml": body.volume_ml,
+            "scoop_number": body.scoop_number,
             "log_id": log.id,
         },
     )
@@ -192,6 +195,7 @@ async def device_start_dispense(
             device_id=device.id,
             temperature_c=body.temperature_c,
             volume_ml=body.volume_ml,
+            scoop_number=body.scoop_number,
             status="pending",
             initiated_by="device",
         )
@@ -205,6 +209,7 @@ async def device_start_dispense(
         "status": "pending",
         "progress_pct": 0,
         "initiated_by": "device",
+        "scoop_number": log.scoop_number,
         "temperature_c": log.temperature_c,
         "volume_ml": log.volume_ml,
     }

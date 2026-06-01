@@ -1,6 +1,6 @@
 # Smart Baby Feeding — Device Firmware Integration Contract
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Base URL (production):** `https://<your-domain>`  
 **Base URL (local dev):** `http://localhost:8000`
 
@@ -182,9 +182,11 @@ Energy / water consumption metric. **Persists**; mirrors `POST /metrics/`.
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `power_kwh` | Yes | ≥ 0, kilowatt-hours consumed this cycle. |
-| `water_liters` | Yes | ≥ 0, liters consumed this cycle. |
+| `power_kwh` | No | ≥ 0, kilowatt-hours consumed this cycle. Omit if the device has no energy meter. |
+| `water_liters` | No | ≥ 0, liters consumed this cycle. Omit if the device has no flow meter. |
 | `cycle_id` | No (recommended) | Wash cycle this metric belongs to. |
+
+> `power_kwh` / `water_liters` are optional — a missing value is stored as `0`. See §4f for how savings are derived when the device cannot measure consumption.
 
 Fields nested under `"payload": {...}` are also accepted for backward
 compatibility, but prefer flat fields.
@@ -245,7 +247,7 @@ The server pushes these JSON frames when the user triggers an action from the ap
 }
 ```
 
-Modes: `"full_cycle"` `"wash"` `"deep_clean"` `"dispense"`
+Modes: `"full_cycle"` `"steam_dry"` `"dry"`
 
 After receiving this, the device should begin the wash and stream `wash_progress` events until `status` reaches `"completed"` or `"failed"`.
 
@@ -257,11 +259,23 @@ After receiving this, the device should begin the wash and stream `wash_progress
   "command": "dispense",
   "temperature_c": 37.0,
   "volume_ml": 150.0,
+  "scoop_number": 2,
   "log_id": 17
 }
 ```
 
-After receiving this, stream `dispense_progress` events until done.
+`scoop_number` (int, optional) is the number of formula scoops; it is `null`/absent when not specified. After receiving this, stream `dispense_progress` events until done.
+
+### `uv_start`
+
+```json
+{
+  "type": "command",
+  "command": "uv_start"
+}
+```
+
+Begin the UV sterilization phase. Sent when the user triggers UV sterilization from the app. No `cycle_id` is associated.
 
 ### `stop_wash` / `stop_dispense`
 
@@ -321,6 +335,7 @@ Response `200 OK`:
   "mode": "full_cycle",
   "status": "completed",
   "progress_pct": 100,
+  "ended_reason": "completed",
   "started_at": "2026-04-25T10:00:00",
   "completed_at": "2026-04-25T10:08:30"
 }
@@ -329,6 +344,10 @@ Response `200 OK`:
 The server also broadcasts a `wash_progress` WebSocket frame to all connected app clients for this device.
 
 **Status values:** `pending` → `running` → `completed` | `failed`
+
+`ended_reason` is `null` until the cycle ends, then one of `completed`, `cancelled`, `timed_out`, `superseded`, `failed` — explaining *why* it reached a terminal state.
+
+**Terminal cycles are final.** Once a cycle is `completed` or `failed`, a contradicting progress update is rejected with **`409 Conflict`** (e.g. a late `running` packet after the cycle was cancelled/timed-out). Re-sending the *same* terminal status is accepted as an idempotent no-op (`200`). On a `409`, stop reporting against that `cycle_id` — it was recovered server-side; obtain a fresh cycle (a new `start_wash` command or `device-start`) and report against the new id.
 
 ---
 
@@ -358,8 +377,10 @@ Response `200 OK`:
   "device_id": 7,
   "temperature_c": 37.0,
   "volume_ml": 150.0,
+  "scoop_number": 2,
   "status": "completed",
   "progress_pct": 100,
+  "ended_reason": "completed",
   "created_at": "2026-04-25T10:05:00",
   "completed_at": "2026-04-25T10:05:45"
 }
@@ -368,6 +389,10 @@ Response `200 OK`:
 The server also broadcasts a `dispense_progress` WebSocket frame to all connected app clients.
 
 **Status values:** `pending` → `dispensing` → `completed` | `failed`
+
+`scoop_number` is `null` when not specified. `ended_reason` mirrors §4a (`completed`/`cancelled`/`timed_out`/`superseded`/`failed`).
+
+**Terminal logs are final** — same rule as §4a: a contradicting update on a `completed`/`failed` dispense returns **`409 Conflict`**; the same terminal status is an idempotent `200`. On `409`, stop reporting against that `log_id` and adopt a fresh one.
 
 ---
 
@@ -509,7 +534,7 @@ Request body:
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `device_id` | Yes | Must match the device the API key belongs to. |
+| `device_id` | No | Optional — derived from the `X-Device-Api-Key`. If supplied, it must match the key's device (else `403`). |
 | `alert_type` | Yes | One of the four safety types below — closed set. |
 | `message` | Yes | 1–500 char human-readable description. |
 | `severity` | No | If omitted, the server fills in the catalog default for this alert_type. |
@@ -550,13 +575,18 @@ its end (e.g. don't re-fire `low_detergent` more than once per minute).
 
 ### 4f. Submit Metrics (per-cycle consumption)
 
-After each wash cycle completes, the device reports how much **power**
-and **water** it consumed. The server uses these to show the user their
-cumulative energy / water savings versus a standard sterilizer baseline
-(1.0 kWh + 5 L per cycle).
+After a wash cycle completes, the device *may* report how much **power**
+and **water** it consumed. Both fields are **optional** — if the device has
+no energy/flow metering, omit them (or skip this call entirely).
 
-This is a **post-cycle one-shot** call — fire it once per completed wash,
-*not* continuously during the cycle.
+> **Savings are estimated server-side.** The dashboard's energy/water savings
+> are computed from the number of **completed wash cycles** × a per-cycle
+> baseline, so they work even when the device reports no consumption data.
+> Sending real `power_kwh` / `water_liters` is optional telemetry, not a
+> requirement for the savings display.
+
+This is a **post-cycle one-shot** call — if you send it, fire it once per
+completed wash, *not* continuously during the cycle.
 
 ```
 POST /metrics/
@@ -577,10 +607,10 @@ Request body:
 
 | Field | Required | Type | Notes |
 |-------|----------|------|-------|
-| `device_id` | Yes | int | Must match the device the API key belongs to. |
+| `device_id` | No | int | Optional — derived from the `X-Device-Api-Key`. If supplied, it must match the key's device (else `403`). |
 | `cycle_id` | No | int | The wash cycle this metric belongs to. Optional, but **strongly recommended** — without it, the metric can't be linked to a specific cycle in the wash history. Same `cycle_id` you received in `start_wash`. |
-| `power_kwh` | Yes | float ≥ 0 | Energy consumed during this cycle, in kilowatt-hours. |
-| `water_liters` | Yes | float ≥ 0 | Water consumed during this cycle, in liters. |
+| `power_kwh` | No | float ≥ 0 | Energy consumed during this cycle, in kilowatt-hours. Omit if unmetered (stored as `0`). |
+| `water_liters` | No | float ≥ 0 | Water consumed during this cycle, in liters. Omit if unmetered (stored as `0`). |
 
 Response `201 Created`:
 
@@ -659,7 +689,7 @@ Any other string is rejected with `422`. Please stick to the list above.
 
 | Field | Required | Type | Notes |
 |-------|----------|------|-------|
-| `device_id` | Yes | int | Must match the device the API key belongs to. |
+| `device_id` | No | int | Optional — derived from the `X-Device-Api-Key`. If supplied, it must match the key's device (else `403`). |
 | `event_type` | Yes | string | Must be one of the values in the table above. |
 | `description` | No | string | Free-text, 0–500 chars, shown verbatim on the Activity timeline. Optional but recommended. |
 
@@ -709,7 +739,7 @@ Request body:
 
 | Field | Required | Type | Notes |
 |-------|----------|------|-------|
-| `mode` | Yes | string | One of `full_cycle`, `wash`, `deep_clean`, `dispense`. |
+| `mode` | Yes | string | One of `full_cycle`, `steam_dry`, `dry`. |
 | `force` | No | bool | Default `false`. When `true`, any prior pending/running cycle on this device is force-failed (so this call can proceed). Use this for recovery after a crash, reboot, or dropped connection — see "Recovery from a stuck cycle" below. |
 
 Response `201 Created`:
@@ -722,6 +752,7 @@ Response `201 Created`:
   "status": "pending",
   "progress_pct": 0,
   "initiated_by": "device",
+  "ended_reason": null,
   "started_at": "2026-05-24T19:38:00",
   "completed_at": null
 }
@@ -784,16 +815,23 @@ came back online. There are two recovery paths — both supported:
    { "mode": "full_cycle", "force": true }
    ```
 
-2. **Server-driven (safety net):** every 5 minutes a scheduler job
+2. **Server-driven (safety net):** every 2 minutes a scheduler job
    auto-fails any cycle that's been in `pending` or `running` state for
-   more than **60 minutes** (longer than the longest legitimate wash).
-   This guarantees nothing stays stuck forever, even if the firmware
-   never gets a chance to retry.
+   more than **60 minutes** (longer than the longest legitimate wash),
+   tagging it `ended_reason: "timed_out"`. This guarantees nothing stays
+   stuck forever, even if the firmware never gets a chance to retry.
 
-The HTTP-side `POST /washing/start` (app path) intentionally does *not*
-support `force`. Cleanup from the app side is meant to be explicit so
-users don't accidentally cancel a wash that's still running on the
-machine.
+**App-side recovery also exists, and affects the device:**
+- `POST /washing/start` (app path) now *also* accepts `force: true`,
+  superseding a stuck cycle (the old one is tagged `superseded`).
+- `PATCH /washing/{cycle_id}/cancel` lets the app clear a stuck cycle
+  (tagged `cancelled`).
+
+In **both** cases the server enqueues an explicit `stop_wash` command for
+the superseded/cancelled `cycle_id`, which the device picks up on its next
+`GET /devices/commands/pending` poll (§4d). Independently, the device will
+also get a **`409`** if it reports progress against that now-terminal id
+(see §4a). Either signal means: stop the old cycle, switch to the new id.
 
 ---
 
@@ -811,13 +849,14 @@ Content-Type: application/json
 Request body:
 
 ```json
-{ "temperature_c": 37.0, "volume_ml": 120, "force": false }
+{ "temperature_c": 37.0, "volume_ml": 120, "scoop_number": 2, "force": false }
 ```
 
 | Field | Required | Type | Notes |
 |-------|----------|------|-------|
 | `temperature_c` | Yes | float | 20.0 – 45.0 (safe milk range). |
 | `volume_ml` | Yes | float | 10.0 – 300.0. |
+| `scoop_number` | No | int | Number of formula scoops, 0 – 20. Omit if not applicable. |
 | `force` | No | bool | Default `false`. When `true`, any prior pending/dispensing log on this device is force-failed. Same recovery semantics as §4h. |
 
 Response `201 Created`:
@@ -828,9 +867,11 @@ Response `201 Created`:
   "device_id": 7,
   "temperature_c": 37.0,
   "volume_ml": 120.0,
+  "scoop_number": 2,
   "status": "pending",
   "progress_pct": 0,
   "initiated_by": "device",
+  "ended_reason": null,
   "created_at": "2026-05-24T19:42:00",
   "completed_at": null
 }
@@ -867,6 +908,36 @@ auto-flipped to `failed`.
 
 ---
 
+### 4j. Get My Device (resolve device_id from the API key)
+
+The API key already identifies one device, so `device_id` is **optional** on
+the device endpoints (`/metrics/`, `/activity/`, `/alerts/`) — omit it and the
+server derives it from the key. If the firmware still wants to know its own
+`device_id` (e.g. for diagnostics), it can fetch it:
+
+```
+GET /devices/me
+Header: X-Device-Api-Key: <api_key>
+```
+
+Response `200 OK`:
+
+```json
+{
+  "id": 7,
+  "device_name": "Nursery Sterilizer",
+  "mac_address": "AA:BB:CC:DD:EE:FF",
+  "wifi_ssid": "home-wifi",
+  "status": "online",
+  "last_seen": "2026-06-01T09:15:00",
+  "created_at": "2026-05-24T19:30:00"
+}
+```
+
+`id` is the `device_id`. No app login / JWT needed — the API key alone resolves it.
+
+---
+
 ## 5. Error Responses
 
 All HTTP errors follow the standard FastAPI format:
@@ -880,6 +951,7 @@ All HTTP errors follow the standard FastAPI format:
 | 400 | Validation failed (bad values, wrong status) |
 | 403 | Missing or invalid `X-Device-Api-Key` |
 | 404 | `cycle_id` / `log_id` not found or belongs to a different device |
+| 409 | Conflict — a cycle/dispense is already active on a start endpoint (§4h/§4i), OR progress was reported against an already-terminal cycle/log (§4a/§4b). Do **not** blindly retry; adopt the active/replacement id. |
 | 429 | Rate limit exceeded (auth endpoints only) |
 | 500 | Server error — retry with back-off |
 
@@ -892,6 +964,7 @@ All HTTP errors follow the standard FastAPI format:
 | HTTP 5xx | Exponential back-off: 1 s, 2 s, 4 s, max 3 retries |
 | HTTP 403 | Do not retry — API key is invalid; alert user via app |
 | HTTP 404 | Do not retry — `log_id`/`cycle_id` is wrong |
+| HTTP 409 | Do not retry as-is — read the body: on a start endpoint adopt `active_*_id` or resend with `force`; on a progress endpoint the cycle/log is terminal, so switch to the new id |
 | WebSocket disconnect | Reconnect with back-off (see §1) |
 | No network | Queue events locally, flush when reconnected |
 
@@ -959,3 +1032,5 @@ Where `AA:BB:CC:DD:EE:FF` is the device MAC address. The app uses this to pre-fi
 | 2026-05-28 | WS events `wash_progress`, `dispense_progress`, `alert`, `metric` now **persist to the database** (full parity with the equivalent HTTP routes). Validation failures return an `error` frame to the sender and are not broadcast. WS `alert` now requires `alert_type` from the §4e catalog. |
 | 2026-05-28 | Stuck-cycle recovery: `/washing/device-start` and `/dispensing/device-start` accept `force: true` to abandon a prior pending/running operation and start fresh. Scheduler also auto-fails wash cycles stale > 60 min and dispenses stale > 15 min. App-path `/washing/start` and `/dispensing/` stay strict (no force). |
 | 2026-05-28 | 409 responses on every start endpoint now include `active_cycle_id`/`active_log_id` plus `*_started_at`/`*_created_at`, `*_initiated_by`, `*_status` so the firmware can adopt the existing operation instead of always force-replacing. Server also holds a per-device MySQL advisory lock around the check-then-insert path to eliminate the TOCTOU race when two starts arrive simultaneously. |
+| 2026-06-01 | `device_id` is now **optional** on `POST /metrics/`, `POST /activity/`, and `POST /alerts/` — it's derived from the `X-Device-Api-Key` (still validated with `403` if supplied and mismatched). Added `GET /devices/me` (§4j) to resolve a device's own `device_id` from its API key. |
+| 2026-06-01 | **v1.1.** Wash modes changed to `full_cycle`, `steam_dry`, `dry` (removed `wash`, `deep_clean`, `dispense`). `dispense`/`device-start` now accept an optional `scoop_number` (0–20). New `uv_start` command (server→device) for UV sterilization. `metric` / `POST /metrics/` `power_kwh` & `water_liters` are now **optional** — savings are estimated server-side from completed-cycle count, so meterless devices need not send them. Progress endpoints (§4a/§4b) reject contradicting updates to an already-terminal cycle/log with **409** (same-status repeat is an idempotent 200). New `ended_reason` field (`completed`/`cancelled`/`timed_out`/`superseded`/`failed`) on cycle/log responses. App path now also supports `force` plus `PATCH /washing/{id}/cancel` & `/dispensing/{id}/cancel`, both of which enqueue a `stop_wash`/`stop_dispense` for the superseded id. Stale-recovery sweep now runs every 2 min. |

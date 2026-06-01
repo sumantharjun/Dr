@@ -12,13 +12,17 @@ from app.models.metrics import DeviceMetrics
 def record_metric(
     db: Session,
     device: Device,
-    power_kwh: float,
-    water_liters: float,
+    power_kwh: Optional[float],
+    water_liters: Optional[float],
     cycle_id: Optional[int] = None,
     body_device_id: Optional[int] = None,
 ) -> DeviceMetrics:
     if body_device_id is not None and body_device_id != device.id:
         raise HTTPException(status_code=403, detail="API key does not match device_id")
+    # power/water are optional (this firmware has no flow/energy meters). Treat
+    # a missing value as 0.0 rather than rejecting the request.
+    power_kwh = 0.0 if power_kwh is None else power_kwh
+    water_liters = 0.0 if water_liters is None else water_liters
     try:
         power_kwh = float(power_kwh)
         water_liters = float(water_liters)
