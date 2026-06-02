@@ -1,18 +1,16 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
   Droplets,
   Settings2,
   Bell,
   ShoppingBag,
-  LogOut,
   Activity,
   Settings,
 } from "lucide-react";
-import { useAuthStore } from "../../store/authStore";
 import { useAlertStore } from "../../store/alertStore";
-import { useBabyStore } from "../../store/babyStore";
 import { clsx } from "clsx";
+import ProfileMenu from "./ProfileMenu";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -25,16 +23,7 @@ const navItems = [
 ];
 
 export default function Sidebar() {
-  const { user, logout } = useAuthStore();
-  const { setBaby } = useBabyStore();
   const unreadCount = useAlertStore((s) => s.unreadCount());
-  const navigate = useNavigate();
-
-  function handleLogout() {
-    logout();
-    setBaby(null);
-    navigate("/login", { replace: true });
-  }
 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0">
@@ -82,16 +71,9 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* User */}
-      <div className="px-3 py-4 border-t border-gray-200">
-        <div className="px-3 py-2 text-sm text-gray-700 font-medium truncate">{user?.full_name}</div>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100 w-full"
-        >
-          <LogOut className="w-5 h-5" />
-          Sign out
-        </button>
+      {/* Profile (bottom-left) — click opens a popover: name, change password, logout */}
+      <div className="px-3 py-3 border-t border-gray-200">
+        <ProfileMenu />
       </div>
     </aside>
   );

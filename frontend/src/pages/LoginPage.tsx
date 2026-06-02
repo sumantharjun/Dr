@@ -10,20 +10,36 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [loading, setLoading] = useState(false);
   const { setAuth } = useAuthStore();
   const navigate = useNavigate();
 
+  function validate() {
+    const errs: { email?: string; password?: string } = {};
+    if (!email.trim()) errs.email = "Email is required";
+    else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errs.email = "Enter a valid email address";
+    if (!password) errs.password = "Password is required";
+    return errs;
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    const errs = validate();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
     setLoading(true);
     try {
       const { data } = await api.post("/auth/login", { email, password });
       setAuth(data.user, data.access_token);
       navigate("/dashboard");
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Login failed");
+      const status = err.response?.status;
+      if (status === 401) setError("Invalid email or password.");
+      else if (status === 429) setError("Too many attempts. Please wait a minute and try again.");
+      else setError(err.response?.data?.detail || "Couldn't sign in. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -46,7 +62,7 @@ export default function LoginPage() {
           <p className="text-gray-500 text-sm mt-3">Sign in to your account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {error && (
             <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
           )}
@@ -55,11 +71,19 @@ export default function LoginPage() {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (fieldErrors.email) setFieldErrors((p) => ({ ...p, email: undefined }));
+              }}
+              aria-invalid={!!fieldErrors.email}
+              className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                fieldErrors.email
+                  ? "border-red-400 focus:ring-red-400"
+                  : "border-gray-300 focus:ring-primary-500"
+              }`}
               placeholder="you@example.com"
             />
+            {fieldErrors.email && <p className="text-xs text-red-600 mt-1">{fieldErrors.email}</p>}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
@@ -67,9 +91,16 @@ export default function LoginPage() {
               <input
                 type={showPassword ? "text" : "password"}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (fieldErrors.password) setFieldErrors((p) => ({ ...p, password: undefined }));
+                }}
+                aria-invalid={!!fieldErrors.password}
+                className={`w-full border rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 ${
+                  fieldErrors.password
+                    ? "border-red-400 focus:ring-red-400"
+                    : "border-gray-300 focus:ring-primary-500"
+                }`}
                 placeholder="••••••••"
               />
               <button
@@ -82,6 +113,7 @@ export default function LoginPage() {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            {fieldErrors.password && <p className="text-xs text-red-600 mt-1">{fieldErrors.password}</p>}
           </div>
           <button
             type="submit"

@@ -3,7 +3,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line,
 } from "recharts";
-import { Plus, Droplets, Clock, Scale } from "lucide-react";
+import { Plus, Droplets, Clock, Scale, BarChart3 } from "lucide-react";
+import { PanelSkeleton } from "../components/Skeleton";
 import api from "../services/api";
 import { Device, FeedingAnalytics, FeedingLog, FeedingSchedule } from "../types";
 import { format, formatDistanceToNow } from "date-fns";
@@ -23,22 +24,27 @@ export default function FeedingPage() {
     feed_time: new Date().toISOString().slice(0, 16),
   });
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const { addToast } = useToastStore();
   const weightReadings = useWsEventStore((s) => s.weightReadings);
   const lastFeedingEvent = useWsEventStore((s) => s.lastFeedingEvent);
 
   const fetchAll = useCallback(async () => {
-    const [logsRes, analyticsRes, scheduleRes, devicesRes] = await Promise.all([
-      api.get("/feeding/logs"),
-      api.get("/feeding/analytics?days=7"),
-      api.get("/feeding/schedule"),
-      api.get("/devices/"),
-    ]);
-    setLogs(logsRes.data);
-    setAnalytics(analyticsRes.data);
-    setSchedule(scheduleRes.data);
-    setDevices(devicesRes.data);
+    try {
+      const [logsRes, analyticsRes, scheduleRes, devicesRes] = await Promise.all([
+        api.get("/feeding/logs"),
+        api.get("/feeding/analytics?days=7"),
+        api.get("/feeding/schedule"),
+        api.get("/devices/"),
+      ]);
+      setLogs(logsRes.data);
+      setAnalytics(analyticsRes.data);
+      setSchedule(scheduleRes.data);
+      setDevices(devicesRes.data);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -120,7 +126,14 @@ export default function FeedingPage() {
       )}
 
       {/* Schedule cards */}
-      {schedule && (
+      {loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <PanelSkeleton />
+          <PanelSkeleton />
+          <PanelSkeleton />
+        </div>
+      )}
+      {!loading && schedule && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <ScheduleCard
             icon={Droplets}
@@ -159,27 +172,35 @@ export default function FeedingPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-semibold text-gray-900 mb-4">Daily Milk Intake (ml) — Last 7 Days</h2>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={analytics}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v: unknown) => [`${v} ml`, "Intake"]} />
-              <Bar dataKey="total_ml" fill="#a62cd4" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {analytics.length === 0 ? (
+            <ChartEmpty message="No feeding data yet — logged feeds will appear here." />
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={analytics}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: unknown) => [`${v} ml`, "Intake"]} />
+                <Bar dataKey="total_ml" fill="#a62cd4" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-semibold text-gray-900 mb-4">Feeding Count — Last 7 Days</h2>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={analytics}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
-              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-              <Tooltip formatter={(v: number) => [v, "Feeds"]} />
-              <Line type="monotone" dataKey="feed_count" stroke="#a62cd4" strokeWidth={2} dot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          {analytics.length === 0 ? (
+            <ChartEmpty message="No feeds recorded in the last 7 days." />
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={analytics}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip formatter={(v: number) => [v, "Feeds"]} />
+                <Line type="monotone" dataKey="feed_count" stroke="#a62cd4" strokeWidth={2} dot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
@@ -311,6 +332,15 @@ function ScheduleCard({ icon: Icon, label, value, color }: {
         <p className="text-xs text-gray-500">{label}</p>
         <p className="text-sm font-semibold text-gray-900">{value}</p>
       </div>
+    </div>
+  );
+}
+
+function ChartEmpty({ message }: { message: string }) {
+  return (
+    <div className="h-[200px] flex flex-col items-center justify-center text-center text-gray-400 gap-2">
+      <BarChart3 className="w-8 h-8 text-gray-300" />
+      <p className="text-sm max-w-[14rem]">{message}</p>
     </div>
   );
 }

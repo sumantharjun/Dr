@@ -48,3 +48,59 @@
     display: none;
   }
 }
+
+/*
+ * Dark mode (class strategy — `.dark` on <html>, see store/themeStore.ts).
+ *
+ * Pages are built with literal light utilities (bg-white, text-gray-*,
+ * border-gray-*). Rather than add `dark:` to every element, flip the common
+ * NEUTRAL surfaces/text/borders centrally here. Brand (`primary`) and status
+ * tints (red/green/yellow/blue) are intentionally left untouched. `.dark
+ * .bg-white` (specificity 0,2,0) beats the `.bg-white` utility (0,1,0), so no
+ * !important is needed. App chrome uses real `dark:` variants for finer control.
+ */
+.dark body {
+  background-color: #0b1120;
+  color: #e5e7eb;
+}
+
+/* Surfaces */
+.dark .bg-white { background-color: #1e2533; }
+.dark .bg-gray-50 { background-color: #161d2b; }
+.dark .bg-gray-100 { background-color: #1f2738; }
+.dark .bg-gray-200 { background-color: #2a3344; }
+
+/* Text */
+.dark .text-gray-900 { color: #f3f4f6; }
+.dark .text-gray-800 { color: #e5e7eb; }
+.dark .text-gray-700 { color: #d1d5db; }
+.dark .text-gray-600 { color: #b0b7c3; }
+.dark .text-gray-500 { color: #9aa3b2; }
+.dark .text-gray-400 { color: #7b8494; }
+
+/* Borders */
+.dark .border-gray-300 { border-color: #3a4456; }
+.dark .border-gray-200 { border-color: #2a3344; }
+.dark .border-gray-100 { border-color: #232b3a; }
+
+/* Common neutral hover states */
+.dark .hover\:bg-gray-50:hover { background-color: #1f2738; }
+.dark .hover\:bg-gray-100:hover { background-color: #283142; }
+
+/* Form controls — inputs have no explicit colours, so in dark mode their text
+   would stay dark-on-dark and be unreadable. Give them a distinct dark field
+   with light text and a muted placeholder. `color-scheme: dark` also fixes the
+   caret, number/date spinners, the select arrow, and scrollbars. */
+.dark {
+  color-scheme: dark;
+}
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #0f1626;
+  color: #e5e7eb;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #6b7280;
+}

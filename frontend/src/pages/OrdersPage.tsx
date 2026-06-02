@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from "react";
-import { ShoppingBag, Plus, Minus, ShoppingCart, Package, XCircle, CheckCircle2, Truck, Clock } from "lucide-react";
+import { ShoppingBag, Plus, Minus, ShoppingCart, Package, XCircle, CheckCircle2, Truck, Clock, Search } from "lucide-react";
 import api from "../services/api";
 import { Order, Product } from "../types";
+import { CardSkeleton } from "../components/Skeleton";
 import { format, formatDistanceToNow } from "date-fns";
 
 const STATUS_STEPS: Order["status"][] = ["pending", "confirmed", "shipped", "delivered"];
@@ -14,12 +15,16 @@ export default function OrdersPage() {
   const [placing, setPlacing] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [search, setSearch] = useState("");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    api.get("/orders/products").then((r) => setProducts(r.data));
-    api.get("/orders/").then((r) => setOrders(r.data));
+    Promise.all([
+      api.get("/orders/products").then((r) => setProducts(r.data)),
+      api.get("/orders/").then((r) => setOrders(r.data)),
+    ]).finally(() => setLoading(false));
   }, []);
 
   // Auto-refresh orders every 30 s when on the orders tab and there are active orders
@@ -45,7 +50,15 @@ export default function OrdersPage() {
   }, [tab, orders]);
 
   const categories = ["all", ...Array.from(new Set(products.map((p) => p.category)))];
-  const filtered = categoryFilter === "all" ? products : products.filter((p) => p.category === categoryFilter);
+  const q = search.trim().toLowerCase();
+  const filtered = products
+    .filter((p) => categoryFilter === "all" || p.category === categoryFilter)
+    .filter(
+      (p) =>
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        (p.description ?? "").toLowerCase().includes(q)
+    );
 
   function updateCart(id: number, delta: number) {
     setCart((prev) => {
@@ -138,6 +151,16 @@ export default function OrdersPage() {
       {tab === "shop" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
+            <div className="relative mb-4">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search products…"
+                className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
             <div className="flex gap-2 mb-4 flex-wrap">
               {categories.map((cat) => (
                 <button
@@ -154,8 +177,20 @@ export default function OrdersPage() {
               ))}
             </div>
 
+            {loading && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <CardSkeleton key={i} />
+                ))}
+              </div>
+            )}
+            {!loading && filtered.length === 0 && (
+              <div className="text-center text-sm text-gray-400 py-12 border border-dashed border-gray-200 rounded-xl">
+                No products match{search.trim() ? ` “${search.trim()}”` : " this filter"}.
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {filtered.map((p) => (
+              {!loading && filtered.map((p) => (
                 <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="w-full h-32 bg-gray-50 rounded-lg mb-3 overflow-hidden flex items-center justify-center">
                     {p.image_url ? (

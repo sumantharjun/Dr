@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import Token, UserCreate, UserLogin, UserOut
+from app.schemas.user import ChangePassword, Token, UserCreate, UserLogin, UserOut
 from app.utils.dependencies import get_current_user
 from app.utils.rate_limiter import login_limiter, register_limiter
 from app.utils.security import create_access_token, hash_password, verify_password
@@ -51,3 +51,21 @@ def login(body: UserLogin, request: Request, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+def change_password(
+    body: ChangePassword,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Change the logged-in user's password after verifying the current one."""
+    if not verify_password(body.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if body.current_password == body.new_password:
+        raise HTTPException(
+            status_code=400, detail="New password must be different from the current one"
+        )
+    current_user.password_hash = hash_password(body.new_password)
+    db.commit()
+    return {"status": "password_changed"}

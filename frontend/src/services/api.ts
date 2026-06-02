@@ -26,7 +26,13 @@ api.interceptors.response.use(
   async (err: AxiosError) => {
     const config = err.config as AxiosRequestConfig & { _retryCount?: number };
 
-    if (err.response?.status === 401) {
+    // A 401 from the auth endpoints is an expected "bad credentials" response —
+    // let the login/register form display it instead of treating it as session
+    // expiry and redirecting (which would wipe the error before it renders).
+    const url = config?.url ?? "";
+    const isAuthAttempt = url.includes("/auth/login") || url.includes("/auth/register");
+
+    if (err.response?.status === 401 && !isAuthAttempt) {
       localStorage.removeItem("access_token");
       window.location.href = "/login";
       return Promise.reject(err);

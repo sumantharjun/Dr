@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { Settings2, Wind, Zap, Thermometer, Square, Sparkles } from "lucide-react";
 import api from "../services/api";
 import { Device, WashingCycle, DispenseLog } from "../types";
@@ -277,7 +278,11 @@ export default function ControlsPage() {
         </div>
       ) : (
         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6 text-sm text-yellow-700">
-          No device paired yet. Go to <span className="font-medium">Device</span> to pair one.
+          No device paired yet.{" "}
+          <Link to="/devices" className="font-medium underline hover:text-yellow-900">
+            Pair a device
+          </Link>{" "}
+          to get started.
         </div>
       )}
 

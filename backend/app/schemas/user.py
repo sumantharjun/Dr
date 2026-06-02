@@ -38,6 +38,20 @@ class UserLogin(BaseModel):
     password: str
 
 
+class ChangePassword(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        if len(v) < MIN_PASSWORD_LENGTH:
+            raise ValueError(f"new_password must be at least {MIN_PASSWORD_LENGTH} characters")
+        if len(v) > MAX_PASSWORD_LENGTH:
+            raise ValueError(f"new_password must be {MAX_PASSWORD_LENGTH} characters or fewer")
+        return v
+
+
 class UserOut(BaseModel):
     id: int
     email: str

@@ -87,7 +87,7 @@ export default function SettingsPage() {
               onClick={() => pickTheme("blue")}
               className={`border-2 rounded-2xl p-4 flex items-center gap-3 transition-all ${
                 theme === "blue"
-                  ? "border-sky-brand bg-sky-brand/20 ring-2 ring-sky-brand/40"
+                  ? "border-sky-brand bg-sky-brand/20 dark:bg-sky-brand/10 ring-2 ring-sky-brand/40"
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
@@ -102,7 +102,7 @@ export default function SettingsPage() {
               onClick={() => pickTheme("pink")}
               className={`border-2 rounded-2xl p-4 flex items-center gap-3 transition-all ${
                 theme === "pink"
-                  ? "border-pink-300 bg-pink-50 ring-2 ring-pink-200"
+                  ? "border-pink-300 dark:border-pink-500/50 bg-pink-50 dark:bg-pink-500/15 ring-2 ring-pink-200"
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
