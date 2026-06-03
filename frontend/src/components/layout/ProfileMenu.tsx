@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { ChevronUp, KeyRound, LogOut, Eye, EyeOff } from "lucide-react";
 import { clsx } from "clsx";
@@ -14,7 +15,7 @@ const PW_FIELDS = [
 ] as const;
 
 export default function ProfileMenu() {
-  const { user, logout } = useAuthStore();
+  const { user, logout, setAuth } = useAuthStore();
   const { setBaby } = useBabyStore();
   const { addToast } = useToastStore();
   const navigate = useNavigate();
@@ -74,10 +75,13 @@ export default function ProfileMenu() {
 
     setChangingPw(true);
     try {
-      await api.post("/auth/change-password", {
+      const { data } = await api.post("/auth/change-password", {
         current_password: pw.current_password,
         new_password: pw.new_password,
       });
+      // The change invalidates all prior tokens; adopt the fresh one the server
+      // returns so THIS session keeps working (other sessions are logged out).
+      if (data?.access_token && user) setAuth(user, data.access_token);
       addToast("Password changed", "success");
       setShowChangePw(false);
     } catch (err: any) {
@@ -135,9 +139,10 @@ export default function ProfileMenu() {
         <ChevronUp className={clsx("w-4 h-4 text-gray-400 transition-transform", !menuOpen && "rotate-180")} />
       </button>
 
-      {/* Change-password modal */}
-      {showChangePw && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={() => setShowChangePw(false)}>
+      {/* Change-password modal — portaled to <body> so it can't be trapped by
+          the sidebar's stacking context (otherwise page content can overlap it). */}
+      {showChangePw && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onMouseDown={() => setShowChangePw(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5" onMouseDown={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-4">
               <KeyRound className="w-5 h-5 text-primary-600" />
@@ -199,12 +204,13 @@ export default function ProfileMenu() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Logout confirmation popup */}
-      {showLogout && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={() => setShowLogout(false)}>
+      {/* Logout confirmation popup — portaled to <body> for the same reason. */}
+      {showLogout && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onMouseDown={() => setShowLogout(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center" onMouseDown={(e) => e.stopPropagation()}>
             <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-3">
               <LogOut className="w-6 h-6 text-red-600" />
@@ -226,7 +232,8 @@ export default function ProfileMenu() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

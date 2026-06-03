@@ -10,7 +10,7 @@ declare module "axios" {
 }
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://unova-api.vsngroups.com",
+  baseURL: import.meta.env.VITE_API_URL || "http://0.0.0.0:8000",
 });
 
 api.interceptors.request.use((config) => {
@@ -26,13 +26,7 @@ api.interceptors.response.use(
   async (err: AxiosError) => {
     const config = err.config as AxiosRequestConfig & { _retryCount?: number };
 
-    // A 401 from the auth endpoints is an expected "bad credentials" response —
-    // let the login/register form display it instead of treating it as session
-    // expiry and redirecting (which would wipe the error before it renders).
-    const url = config?.url ?? "";
-    const isAuthAttempt = url.includes("/auth/login") || url.includes("/auth/register");
-
-    if (err.response?.status === 401 && !isAuthAttempt) {
+    if (err.response?.status === 401) {
       localStorage.removeItem("access_token");
       window.location.href = "/login";
       return Promise.reject(err);

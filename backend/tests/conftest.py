@@ -13,6 +13,10 @@ import pathlib
 TEST_DB = "/tmp/sbf_pytest.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB}"
 os.environ["SECRET_KEY"] = "test-secret-" + "x" * 40  # passes the strong-key check
+# Force the no-SMTP (outbox) mailer in tests so they never send real email,
+# overriding any SMTP creds in .env. Tests assert on email.outbox.
+os.environ["SMTP_HOST"] = ""
+os.environ["FRONTEND_URL"] = "http://testserver"
 
 # Start from a clean schema every test session.
 pathlib.Path(TEST_DB).unlink(missing_ok=True)
@@ -42,9 +46,12 @@ Base.metadata.create_all(bind=engine)
 def _reset_rate_limiters():
     """The /auth limiters key by client IP and TestClient shares one host, so
     clear their state before every test to keep tests independent."""
-    from app.utils.rate_limiter import login_limiter, register_limiter
+    from app.utils.rate_limiter import login_limiter, register_limiter, reset_limiter
+    from app.utils import email
     login_limiter._log.clear()
     register_limiter._log.clear()
+    reset_limiter._log.clear()
+    email.outbox.clear()
     yield
 
 

@@ -220,6 +220,23 @@ try:
 except Exception:
     logging.getLogger(__name__).exception("firmware_spec migration failed")
 
+
+def _migrate_password_changed_at() -> None:
+    """Idempotent: add `password_changed_at` to users (portable ADD COLUMN)."""
+    from sqlalchemy import inspect, text
+
+    cols = {c["name"] for c in inspect(engine).get_columns("users")}
+    if "password_changed_at" not in cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN password_changed_at DATETIME NULL"))
+        logger.info("Added password_changed_at column to users")
+
+
+try:
+    _migrate_password_changed_at()
+except Exception:
+    logging.getLogger(__name__).exception("password_changed_at migration failed")
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -438,6 +455,30 @@ def auto_fail_stale_operations() -> None:
 # confirmed → shipped  at 10 min from creation
 # shipped → delivered  at 30 min from creation
 # ---------------------------------------------------------------------------
+def purge_expired_reset_tokens() -> None:
+    """Delete used or expired password-reset tokens so the table doesn't grow
+    unbounded. Runs hourly. A small grace keeps just-expired rows briefly."""
+    from sqlalchemy import or_
+    from app.models.password_reset import PasswordResetToken
+
+    db = SessionLocal()
+    try:
+        cutoff = now_ist() - timedelta(hours=1)
+        deleted = (
+            db.query(PasswordResetToken)
+            .filter(or_(PasswordResetToken.used_at.isnot(None), PasswordResetToken.expires_at < cutoff))
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        if deleted:
+            logger.info("Purged %d expired/used password-reset token(s)", deleted)
+    except Exception:
+        logger.exception("purge_expired_reset_tokens failed")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def progress_orders() -> None:
     from app.models.order import Order
 
@@ -545,6 +586,10 @@ async def start_scheduler():
     scheduler.add_job(
         auto_fail_stale_operations, "interval", minutes=2,
         id="auto_fail_stale_ops", replace_existing=True,
+    )
+    scheduler.add_job(
+        purge_expired_reset_tokens, "interval", hours=1,
+        id="purge_reset_tokens", replace_existing=True,
     )
     scheduler.start()
     logger.info("Scheduler started with %d jobs", len(scheduler.get_jobs()))

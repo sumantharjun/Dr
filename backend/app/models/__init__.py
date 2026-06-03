@@ -9,3 +9,4 @@ from app.models.metrics import DeviceMetrics
 from app.models.activity import DeviceActivityLog
 from app.models.pending_command import PendingCommand
 from app.models.baby import Baby
+from app.models.password_reset import PasswordResetToken

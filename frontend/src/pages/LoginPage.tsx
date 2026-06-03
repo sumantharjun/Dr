@@ -114,6 +114,11 @@ export default function LoginPage() {
               </button>
             </div>
             {fieldErrors.password && <p className="text-xs text-red-600 mt-1">{fieldErrors.password}</p>}
+            <div className="text-right mt-1">
+              <Link to="/forgot-password" className="text-xs text-primary-600 font-medium hover:underline">
+                Forgot password?
+              </Link>
+            </div>
           </div>
           <button
             type="submit"

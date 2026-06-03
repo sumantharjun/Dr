@@ -21,6 +21,20 @@ def hash_api_key(plaintext: str) -> str:
     return hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
 
 
+def password_marker(changed_at) -> str:
+    """Token claim that pins a session to the password version at issue time.
+    Empty string when the password has never been changed (legacy/new users) so
+    pre-existing tokens stay valid; once changed, old tokens stop matching."""
+    return changed_at.isoformat() if changed_at else ""
+
+
+def hash_token(plaintext: str) -> str:
+    """SHA-256 of a high-entropy reset token. Same rationale as hash_api_key —
+    the token is random and long, so a fast hash is appropriate and we never
+    store the plaintext (it lives only in the emailed link)."""
+    return hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
+
+
 def hash_password(password: str) -> str:
     return pwd_context.hash(password[:72])
 

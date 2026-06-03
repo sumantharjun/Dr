@@ -26,3 +26,4 @@ class RateLimiter:
 # Shared limiter instances
 login_limiter = RateLimiter(max_calls=5, period_seconds=60)       # 5 attempts / minute
 register_limiter = RateLimiter(max_calls=3, period_seconds=300)   # 3 attempts / 5 minutes
+reset_limiter = RateLimiter(max_calls=5, period_seconds=600)      # 5 reset requests / 10 minutes

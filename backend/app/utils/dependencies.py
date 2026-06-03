@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.utils.security import decode_token, hash_api_key
+from app.utils.security import decode_token, hash_api_key, password_marker
 
 bearer_scheme = HTTPBearer()
 
@@ -24,6 +24,12 @@ def get_current_user(
     user = db.query(User).filter(User.id == int(payload["sub"])).first()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    # Reject tokens issued before the user's most recent password change/reset.
+    if payload.get("pwd_at", "") != password_marker(user.password_changed_at):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired — please sign in again.",
+        )
     return user
 
 
