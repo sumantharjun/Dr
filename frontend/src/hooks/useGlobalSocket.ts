@@ -51,6 +51,20 @@ function routeEvent(deviceId: number, event: Record<string, unknown>) {
       }
       break;
 
+    case "uv_progress":
+      ws.setUvProgress(deviceId, {
+        uv_cycle_id: event.uv_cycle_id as number,
+        status: event.status as string,
+      });
+      if (event.status === "started" && event.initiated_by === "device") {
+        toastStore.addToast("UV sterilization started from device", "info");
+      } else if (event.status === "completed") {
+        toastStore.addToast("UV sterilization completed!", "success");
+      } else if (event.status === "failed") {
+        toastStore.addToast("UV sterilization failed. Check device.", "error");
+      }
+      break;
+
     case "weight_report":
       ws.setWeightReading(deviceId, (event.payload as Record<string, number> | undefined)?.weight_g ?? null);
       break;

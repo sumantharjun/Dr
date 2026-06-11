@@ -49,6 +49,16 @@ export interface WashingCycle {
   completed_at: string | null;
 }
 
+export interface UvCycle {
+  id: number;
+  device_id: number;
+  status: "started" | "completed" | "failed";
+  initiated_by: "app" | "device";
+  ended_reason: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
 export interface DispenseLog {
   id: number;
   device_id: number;

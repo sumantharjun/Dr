@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import Base, engine, SessionLocal
 from app.models import *  # noqa: F401,F403 — registers all ORM models with Base
-from app.routers import auth, devices, feeding, washing, dispensing, alerts, orders, metrics, activity, baby
+from app.routers import auth, devices, feeding, washing, dispensing, alerts, orders, metrics, activity, baby, uv
 from app.utils.timezone import now_ist
 
 # ---------------------------------------------------------------------------
@@ -283,6 +283,7 @@ app.include_router(orders.router)
 app.include_router(metrics.router)
 app.include_router(activity.router)
 app.include_router(baby.router)
+app.include_router(uv.router)
 
 scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
 
@@ -377,18 +378,21 @@ async def check_feeding_reminders() -> None:
 # ---------------------------------------------------------------------------
 WASH_STALE_TIMEOUT_MIN = 60     # wash cycles longer than this are presumed stuck
 DISPENSE_STALE_TIMEOUT_MIN = 15  # dispense ops are short — much tighter window
+UV_STALE_TIMEOUT_MIN = 20        # UV sterilization is short — tight window
 
 
 def auto_fail_stale_operations() -> None:
     from sqlalchemy import update
     from app.models.washing import WashingCycle
     from app.models.dispensing import MilkDispenseLog
+    from app.models.uv import UvCycle
 
     db = SessionLocal()
     try:
         now = now_ist()
         wash_cutoff = now - timedelta(minutes=WASH_STALE_TIMEOUT_MIN)
         disp_cutoff = now - timedelta(minutes=DISPENSE_STALE_TIMEOUT_MIN)
+        uv_cutoff = now - timedelta(minutes=UV_STALE_TIMEOUT_MIN)
 
         # SELECT first purely for per-row logging, then recover with a single
         # atomic conditional UPDATE. The UPDATE re-checks the status filter at
@@ -436,11 +440,26 @@ def auto_fail_stale_operations() -> None:
             .execution_options(synchronize_session=False)
         )
 
+        stale_uv = (
+            db.query(UvCycle.id, UvCycle.started_at)
+            .filter(UvCycle.status == "started", UvCycle.started_at < uv_cutoff)
+            .all()
+        )
+        for uid, started_at in stale_uv:
+            logger.info("Auto-failing stale UV cycle id=%s (started_at=%s)", uid, started_at)
+
+        uv_result = db.execute(
+            update(UvCycle)
+            .where(UvCycle.status == "started", UvCycle.started_at < uv_cutoff)
+            .values(status="failed", ended_reason="timed_out", completed_at=now)
+            .execution_options(synchronize_session=False)
+        )
+
         db.commit()
-        if wash_result.rowcount or disp_result.rowcount:
+        if wash_result.rowcount or disp_result.rowcount or uv_result.rowcount:
             logger.info(
-                "Auto-fail sweep: %s wash cycle(s), %s dispense(s) recovered",
-                wash_result.rowcount, disp_result.rowcount,
+                "Auto-fail sweep: %s wash, %s dispense, %s UV cycle(s) recovered",
+                wash_result.rowcount, disp_result.rowcount, uv_result.rowcount,
             )
     except Exception:
         logger.exception("auto_fail_stale_operations failed")

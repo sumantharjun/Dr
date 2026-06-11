@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Settings2, Wind, Zap, Thermometer, Square, Sparkles } from "lucide-react";
 import api from "../services/api";
-import { Device, WashingCycle, DispenseLog } from "../types";
+import { Device, WashingCycle, DispenseLog, UvCycle } from "../types";
 import { format, formatDistanceToNow } from "date-fns";
 import { useToastStore } from "../store/toastStore";
 import { useWsEventStore } from "../store/wsEventStore";
@@ -19,25 +19,37 @@ export default function ControlsPage() {
   const [selectedMode, setSelectedMode] = useState<string>("");
   const [washHistory, setWashHistory] = useState<WashingCycle[]>([]);
   const [dispenseHistory, setDispenseHistory] = useState<DispenseLog[]>([]);
+  const [uvHistory, setUvHistory] = useState<UvCycle[]>([]);
   const [dispense, setDispense] = useState({ temperature_c: "37", volume_ml: "120", scoop_number: "" });
   const [washLoading, setWashLoading] = useState(false);
   const [dispenseLoading, setDispenseLoading] = useState(false);
   const [stopLoading, setStopLoading] = useState<"wash" | "dispense" | null>(null);
   const [uvLoading, setUvLoading] = useState(false);
+  const [uvStopLoading, setUvStopLoading] = useState(false);
 
   const { addToast } = useToastStore();
 
   // Real-time progress from global WebSocket (via wsEventStore)
   const washProg = useWsEventStore((s) => (selectedDevice ? s.washProgress[selectedDevice] : null));
   const dispenseProg = useWsEventStore((s) => (selectedDevice ? s.dispenseProgress[selectedDevice] : null));
+  const uvProg = useWsEventStore((s) => (selectedDevice ? s.uvProgress[selectedDevice] : null));
 
   const fetchHistory = useCallback(async () => {
-    const [wash, disp] = await Promise.all([
+    const [wash, disp, uvRes] = await Promise.all([
       api.get("/washing/history"),
       api.get("/dispensing/history"),
+      api.get("/uv/history"),
     ]);
     setWashHistory(wash.data);
     setDispenseHistory(disp.data);
+    setUvHistory(uvRes.data);
+
+    // Hydrate an in-flight UV cycle so the live status shows after a reload.
+    const sUv = useWsEventStore.getState();
+    const activeUv = (uvRes.data as UvCycle[]).find((c) => c.status === "started");
+    if (activeUv && !sUv.uvProgress[activeUv.device_id]) {
+      sUv.setUvProgress(activeUv.device_id, { uv_cycle_id: activeUv.id, status: "started" });
+    }
 
     // Hydrate any in-flight operation into the progress store so the live
     // card + Stop button appear even after a page reload (we can't rely on
@@ -146,13 +158,39 @@ export default function ControlsPage() {
     if (!selectedDevice) return;
     setUvLoading(true);
     try {
-      await api.post(`/devices/${selectedDevice}/command`, { command: "uv_start" });
+      const { data } = await api.post("/uv/start", { device_id: selectedDevice });
+      useWsEventStore.getState().setUvProgress(selectedDevice, { uv_cycle_id: data.id, status: "started" });
       addToast("UV sterilization started", "info");
+      fetchHistory();
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      addToast(msg || "Failed to start UV sterilization", "error");
+      const resp = (err as { response?: { status?: number; data?: any } })?.response;
+      if (resp?.status === 409 && resp.data?.active_uv_cycle_id) {
+        useWsEventStore.getState().setUvProgress(selectedDevice, {
+          uv_cycle_id: resp.data.active_uv_cycle_id,
+          status: resp.data.active_uv_status ?? "started",
+        });
+        addToast("UV sterilization is already running", "info");
+      } else {
+        addToast(resp?.data?.detail || "Failed to start UV sterilization", "error");
+      }
     } finally {
       setUvLoading(false);
+    }
+  }
+
+  async function handleUvCancel() {
+    if (!selectedDevice || !uvProg?.uv_cycle_id) return;
+    setUvStopLoading(true);
+    try {
+      await api.patch(`/uv/${uvProg.uv_cycle_id}/cancel`);
+      useWsEventStore.getState().setUvProgress(selectedDevice, { uv_cycle_id: uvProg.uv_cycle_id, status: "failed" });
+      addToast("UV sterilization stopped", "info");
+      fetchHistory();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      addToast(msg || "Failed to stop UV", "error");
+    } finally {
+      setUvStopLoading(false);
     }
   }
 
@@ -396,6 +434,36 @@ export default function ControlsPage() {
         </div>
       )}
 
+      {/* Live status — UV (discrete states, no progress bar) */}
+      {uvProg && (
+        <div className={`rounded-xl p-4 mb-4 border flex items-center justify-between ${
+          uvProg.status === "failed" ? "bg-red-50 border-red-200"
+          : uvProg.status === "completed" ? "bg-green-50 border-green-200"
+          : "bg-purple-50 border-purple-200"
+        }`}>
+          <p className={`text-sm font-medium ${
+            uvProg.status === "failed" ? "text-red-800"
+            : uvProg.status === "completed" ? "text-green-800"
+            : "text-purple-800"
+          }`}>
+            {uvProg.status === "completed" ? "UV sterilization complete"
+              : uvProg.status === "failed" ? "UV sterilization failed"
+              : "UV sterilizing…"}
+          </p>
+          {uvProg.status === "started" && (
+            <button
+              onClick={handleUvCancel}
+              disabled={uvStopLoading}
+              title="Stop UV sterilization"
+              className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 border border-red-200 hover:border-red-400 rounded-lg px-2 py-1 disabled:opacity-50 transition-colors"
+            >
+              <Square className="w-3 h-3 fill-current" />
+              {uvStopLoading ? "Stopping…" : "Stop"}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Washing */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -429,12 +497,12 @@ export default function ControlsPage() {
           </button>
           <button
             onClick={handleUvStart}
-            disabled={!selectedDevice || uvLoading}
+            disabled={!selectedDevice || uvLoading || uvProg?.status === "started"}
             title="Send a UV sterilization start command to the device"
             className="w-full mt-2 flex items-center justify-center gap-2 border border-purple-300 text-purple-700 hover:bg-purple-50 disabled:opacity-50 py-2.5 rounded-lg text-sm font-medium transition-colors"
           >
             <Sparkles className="w-4 h-4" />
-            {uvLoading ? "Starting UV…" : "Start UV Sterilization"}
+            {uvLoading ? "Starting UV…" : uvProg?.status === "started" ? "UV running…" : "Start UV Sterilization"}
           </button>
         </div>
 
@@ -568,6 +636,37 @@ export default function ControlsPage() {
           </div>
         )}
       </div>
+
+      {/* UV History */}
+      <div className="bg-white rounded-xl border border-gray-200">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-900">Recent UV Cycles</h2>
+        </div>
+        {uvHistory.length === 0 ? (
+          <p className="text-center text-sm text-gray-400 py-8">No UV cycles yet</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-500 uppercase border-b border-gray-100">
+                  <th className="px-5 py-3 text-left">Started by</th>
+                  <th className="px-5 py-3 text-left">Status</th>
+                  <th className="px-5 py-3 text-left">Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {uvHistory.slice(0, 10).map((c) => (
+                  <tr key={c.id} className="border-b border-gray-50">
+                    <td className="px-5 py-3 text-gray-600 capitalize">{c.initiated_by}</td>
+                    <td className="px-5 py-3"><StatusBadge status={c.ended_reason ?? c.status} /></td>
+                    <td className="px-5 py-3 text-gray-500">{format(new Date(c.started_at), "dd MMM, HH:mm")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
       </div>
     </div>
   );
@@ -578,8 +677,12 @@ function StatusBadge({ status }: { status: string }) {
     pending:    "bg-yellow-100 text-yellow-700",
     running:    "bg-blue-100 text-blue-700",
     dispensing: "bg-blue-100 text-blue-700",
+    started:    "bg-blue-100 text-blue-700",
     completed:  "bg-green-100 text-green-700",
     failed:     "bg-red-100 text-red-700",
+    cancelled:  "bg-gray-200 text-gray-700",
+    timed_out:  "bg-orange-100 text-orange-700",
+    superseded: "bg-gray-200 text-gray-700",
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] || "bg-gray-100 text-gray-600"}`}>

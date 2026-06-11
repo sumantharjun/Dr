@@ -12,14 +12,21 @@ export interface DispenseProgressData {
   status: string;
 }
 
+export interface UvProgressData {
+  uv_cycle_id: number;
+  status: string;
+}
+
 interface WsEventState {
   washProgress: Record<number, WashProgressData | null>;
   dispenseProgress: Record<number, DispenseProgressData | null>;
+  uvProgress: Record<number, UvProgressData | null>;
   weightReadings: Record<number, number | null>;
   lastFeedingEvent: Record<number, number | null>;
 
   setWashProgress: (deviceId: number, data: WashProgressData | null) => void;
   setDispenseProgress: (deviceId: number, data: DispenseProgressData | null) => void;
+  setUvProgress: (deviceId: number, data: UvProgressData | null) => void;
   setWeightReading: (deviceId: number, weight: number | null) => void;
   setLastFeedingEvent: (deviceId: number, ts: number) => void;
 }
@@ -27,6 +34,7 @@ interface WsEventState {
 export const useWsEventStore = create<WsEventState>((set) => ({
   washProgress: {},
   dispenseProgress: {},
+  uvProgress: {},
   weightReadings: {},
   lastFeedingEvent: {},
 
@@ -35,6 +43,9 @@ export const useWsEventStore = create<WsEventState>((set) => ({
 
   setDispenseProgress: (deviceId, data) =>
     set((s) => ({ dispenseProgress: { ...s.dispenseProgress, [deviceId]: data } })),
+
+  setUvProgress: (deviceId, data) =>
+    set((s) => ({ uvProgress: { ...s.uvProgress, [deviceId]: data } })),
 
   setWeightReading: (deviceId, weight) =>
     set((s) => ({ weightReadings: { ...s.weightReadings, [deviceId]: weight } })),

@@ -36,3 +36,4 @@ class Device(Base):
     metrics = relationship("DeviceMetrics", back_populates="device", cascade="all, delete")
     activity_logs = relationship("DeviceActivityLog", back_populates="device", cascade="all, delete")
     pending_commands = relationship("PendingCommand", back_populates="device", cascade="all, delete")
+    uv_cycles = relationship("UvCycle", back_populates="device", cascade="all, delete")

@@ -271,11 +271,27 @@ After receiving this, the device should begin the wash and stream `wash_progress
 ```json
 {
   "type": "command",
-  "command": "uv_start"
+  "command": "uv_start",
+  "uv_cycle_id": 51
 }
 ```
 
-Begin the UV sterilization phase. Sent when the user triggers UV sterilization from the app. No `cycle_id` is associated.
+Begin UV sterilization. Sent when the user triggers it from the app. Store
+`uv_cycle_id` and echo it in `POST /uv/progress` (see §4k) to report
+`started` → `completed`/`failed`, exactly like wash/dispense.
+
+### `uv_stop`
+
+```json
+{
+  "type": "command",
+  "command": "uv_stop",
+  "uv_cycle_id": 51
+}
+```
+
+Stop the UV cycle. Sent when the app cancels or force-supersedes an active UV
+cycle. Halt UV and report the cycle `failed` (or stop reporting on that id).
 
 ### `stop_wash` / `stop_dispense`
 
@@ -938,6 +954,41 @@ Response `200 OK`:
 
 ---
 
+### 4k. UV Sterilization (status reporting)
+
+UV mirrors wash/dispense but with **simple discrete states** (no progress %):
+`started` → `completed` | `failed`.
+
+**Report UV status** (device → server), echoing the `uv_cycle_id` from the
+`uv_start` command:
+
+```
+POST /uv/progress
+Header: X-Device-Api-Key: <api_key>
+{ "uv_cycle_id": 51, "status": "completed" }   // status: started | completed | failed
+```
+
+Response `200 OK` is the UV cycle (`id`, `device_id`, `status`, `initiated_by`,
+`ended_reason`, `started_at`, `completed_at`). **Terminal-state guard:** once a
+cycle is `completed`/`failed`, a contradicting update returns **`409`** (an
+idempotent repeat of the same status returns `200`).
+
+**Start UV from the device** (physical button) — creates the cycle server-side
+and notifies app clients:
+
+```
+POST /uv/device-start
+Header: X-Device-Api-Key: <api_key>
+{ "force": false }   // force=true supersedes a stuck cycle; 409 otherwise (adopt active_uv_cycle_id)
+```
+
+Response `201` includes the `id` to use as `uv_cycle_id` in `/uv/progress`.
+(App-initiated UV uses `POST /uv/start` and reaches the device as the `uv_start`
+command above.) A stuck UV cycle (`started` > 20 min) is auto-failed by the same
+recovery sweep as wash/dispense.
+
+---
+
 ## 5. Error Responses
 
 All HTTP errors follow the standard FastAPI format:
@@ -1032,5 +1083,6 @@ Where `AA:BB:CC:DD:EE:FF` is the device MAC address. The app uses this to pre-fi
 | 2026-05-28 | WS events `wash_progress`, `dispense_progress`, `alert`, `metric` now **persist to the database** (full parity with the equivalent HTTP routes). Validation failures return an `error` frame to the sender and are not broadcast. WS `alert` now requires `alert_type` from the §4e catalog. |
 | 2026-05-28 | Stuck-cycle recovery: `/washing/device-start` and `/dispensing/device-start` accept `force: true` to abandon a prior pending/running operation and start fresh. Scheduler also auto-fails wash cycles stale > 60 min and dispenses stale > 15 min. App-path `/washing/start` and `/dispensing/` stay strict (no force). |
 | 2026-05-28 | 409 responses on every start endpoint now include `active_cycle_id`/`active_log_id` plus `*_started_at`/`*_created_at`, `*_initiated_by`, `*_status` so the firmware can adopt the existing operation instead of always force-replacing. Server also holds a per-device MySQL advisory lock around the check-then-insert path to eliminate the TOCTOU race when two starts arrive simultaneously. |
+| 2026-06-03 | **UV sterilization is now a first-class flow** (§4k). Device reports UV status (`started`/`completed`/`failed`) via `POST /uv/progress`, plus `POST /uv/device-start` for device-initiated UV. The `uv_start` command now carries a `uv_cycle_id`; added a `uv_stop` command. App endpoints: `POST /uv/start`, `PATCH /uv/{id}/cancel`, `GET /uv/history`. Same recovery parity as wash/dispense (per-device lock, force, terminal-state 409 guard, auto-timeout sweep at 20 min). `uv_progress` is also accepted as a WebSocket event. |
 | 2026-06-01 | `device_id` is now **optional** on `POST /metrics/`, `POST /activity/`, and `POST /alerts/` — it's derived from the `X-Device-Api-Key` (still validated with `403` if supplied and mismatched). Added `GET /devices/me` (§4j) to resolve a device's own `device_id` from its API key. |
 | 2026-06-01 | **v1.1.** Wash modes changed to `full_cycle`, `steam_dry`, `dry` (removed `wash`, `deep_clean`, `dispense`). `dispense`/`device-start` now accept an optional `scoop_number` (0–20). New `uv_start` command (server→device) for UV sterilization. `metric` / `POST /metrics/` `power_kwh` & `water_liters` are now **optional** — savings are estimated server-side from completed-cycle count, so meterless devices need not send them. Progress endpoints (§4a/§4b) reject contradicting updates to an already-terminal cycle/log with **409** (same-status repeat is an idempotent 200). New `ended_reason` field (`completed`/`cancelled`/`timed_out`/`superseded`/`failed`) on cycle/log responses. App path now also supports `force` plus `PATCH /washing/{id}/cancel` & `/dispensing/{id}/cancel`, both of which enqueue a `stop_wash`/`stop_dispense` for the superseded id. Stale-recovery sweep now runs every 2 min. |

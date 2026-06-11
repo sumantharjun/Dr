@@ -17,6 +17,7 @@ from app.services.alerts_ops import create_device_alert
 from app.services.commands import dispatch_command
 from app.services.dispensing_ops import apply_dispense_progress
 from app.services.metrics_ops import record_metric
+from app.services.uv_ops import apply_uv_progress
 from app.services.washing_ops import apply_wash_progress
 from app.utils.dependencies import get_current_user, get_device_by_api_key
 from app.utils.security import decode_token, hash_api_key
@@ -27,11 +28,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
-VALID_COMMANDS = {"start_wash", "stop_wash", "dispense", "stop_dispense", "uv_start", "reboot", "status"}
-ALLOWED_WS_EVENT_TYPES = {"wash_progress", "dispense_progress", "alert", "status", "metric", "weight_report"}
+VALID_COMMANDS = {"start_wash", "stop_wash", "dispense", "stop_dispense", "uv_start", "uv_stop", "reboot", "status"}
+ALLOWED_WS_EVENT_TYPES = {"wash_progress", "dispense_progress", "uv_progress", "alert", "status", "metric", "weight_report"}
 # Subset of ALLOWED_WS_EVENT_TYPES that persists to the database. Anything not
 # in this set is treated as ephemeral (live-only) and only broadcast.
-PERSISTABLE_WS_EVENT_TYPES = {"wash_progress", "dispense_progress", "alert", "metric"}
+PERSISTABLE_WS_EVENT_TYPES = {"wash_progress", "dispense_progress", "uv_progress", "alert", "metric"}
 WS_IDLE_TIMEOUT = 300  # 5 min — device must send something or server pings
 
 
@@ -71,6 +72,13 @@ def _persist_ws_event(
                 log_id=event.get("log_id"),
                 status=event.get("status"),
                 progress_pct=event.get("progress_pct"),
+            )
+        elif etype == "uv_progress":
+            apply_uv_progress(
+                db=db,
+                device=device,
+                uv_cycle_id=event.get("uv_cycle_id"),
+                status=event.get("status"),
             )
         elif etype == "alert":
             # Accept either flat fields (preferred) or nested under "payload"
