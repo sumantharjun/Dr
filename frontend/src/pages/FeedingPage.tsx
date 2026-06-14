@@ -98,15 +98,15 @@ export default function FeedingPage() {
   const liveDevice = devices.find((d) => d.id === liveDeviceId);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Feeding</h1>
           <p className="text-gray-500 text-sm mt-1">Track and monitor your baby's feeding</p>
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors flex-shrink-0 whitespace-nowrap"
         >
           <Plus className="w-4 h-4" /> Log Feeding
         </button>

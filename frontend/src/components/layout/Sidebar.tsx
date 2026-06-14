@@ -7,6 +7,7 @@ import {
   ShoppingBag,
   Activity,
   Settings,
+  X,
 } from "lucide-react";
 import { useAlertStore } from "../../store/alertStore";
 import { clsx } from "clsx";
@@ -22,13 +23,47 @@ const navItems = [
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  /** Whether the off-canvas drawer is open (mobile only). */
+  open: boolean;
+  /** Close the drawer — called on backdrop tap, nav tap, and the close button. */
+  onClose: () => void;
+}
+
+export default function Sidebar({ open, onClose }: SidebarProps) {
   const unreadCount = useAlertStore((s) => s.unreadCount());
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0">
+    <>
+      {/* Backdrop — only rendered/visible on mobile when the drawer is open. */}
+      <div
+        onClick={onClose}
+        aria-hidden="true"
+        className={clsx(
+          "fixed inset-0 z-40 bg-black/40 lg:hidden transition-opacity",
+          open ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}
+      />
+
+      <aside
+        className={clsx(
+          // Mobile: fixed off-canvas drawer that slides in from the left.
+          // Desktop (lg+): static, sticky in-flow sidebar — no transform.
+          "fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex flex-col h-screen",
+          "transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:z-auto lg:translate-x-0",
+          open ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
       {/* Logo */}
-      <div className="flex flex-col items-center gap-2 px-5 py-5 border-b border-gray-200">
+      <div className="relative flex flex-col items-center gap-2 px-5 py-5 border-b border-gray-200">
+        {/* Close button — drawer only (mobile). */}
+        <button
+          onClick={onClose}
+          aria-label="Close menu"
+          className="lg:hidden absolute top-3 right-3 p-1.5 rounded-lg text-gray-500 hover:bg-gray-100"
+        >
+          <X className="w-5 h-5" />
+        </button>
         <img
           src="/mascots/UNOVA_Logo.png"
           alt="UNOVA"
@@ -51,6 +86,7 @@ export default function Sidebar() {
           <NavLink
             key={to}
             to={to}
+            onClick={onClose}
             className={({ isActive }) =>
               clsx(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
@@ -75,6 +111,7 @@ export default function Sidebar() {
       <div className="px-3 py-3 border-t border-gray-200">
         <ProfileMenu />
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

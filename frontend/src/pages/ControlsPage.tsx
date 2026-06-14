@@ -296,7 +296,7 @@ export default function ControlsPage() {
   const dispenseIsActive = !!dispenseProg && dispenseProg.status !== "completed" && dispenseProg.status !== "failed";
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Device Controls</h1>
         <p className="text-gray-500 text-sm mt-1">Send commands and monitor your device in real time</p>

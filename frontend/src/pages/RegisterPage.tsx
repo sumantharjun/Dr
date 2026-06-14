@@ -60,7 +60,7 @@ export default function RegisterPage() {
           <img
             src="/mascots/UNOVA_Logo.png"
             alt="UNOVA"
-            className="w-64 h-auto mb-4"
+            className="w-48 sm:w-64 max-w-full h-auto mb-4"
           />
           <Mascot variant="sleeping" size={170} />
           <h2 className="text-xl font-bold text-gray-900 mt-2">Create Account</h2>

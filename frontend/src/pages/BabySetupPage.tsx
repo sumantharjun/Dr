@@ -48,7 +48,7 @@ export default function BabySetupPage() {
           <img
             src="/mascots/UNOVA_Logo.png"
             alt="UNOVA"
-            className="w-72 h-auto mb-4"
+            className="w-56 sm:w-72 max-w-full h-auto mb-4"
           />
           <Mascot variant="sleeping" size={180} />
           <h1 className="text-xl font-bold text-gray-900 mt-2">

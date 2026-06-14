@@ -42,7 +42,7 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cream-50 via-cream-100 to-sky-brand/30 p-4">
       <div className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md">
         <div className="flex flex-col items-center mb-6">
-          <img src="/mascots/UNOVA_Logo.png" alt="UNOVA" className="w-64 h-auto mb-4" />
+          <img src="/mascots/UNOVA_Logo.png" alt="UNOVA" className="w-48 sm:w-64 max-w-full h-auto mb-4" />
           <Mascot variant="sleeping" size={150} />
           <h2 className="text-xl font-bold text-gray-900 mt-2">Set a new password</h2>
         </div>

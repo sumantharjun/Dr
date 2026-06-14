@@ -65,9 +65,9 @@ export default function AlertsPage() {
   const unreadCount = alerts.filter((a) => !a.is_read).length;
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Alerts</h1>
           <p className="text-gray-500 text-sm mt-1">
             {unreadCount > 0
@@ -78,7 +78,7 @@ export default function AlertsPage() {
         {unreadCount > 0 && (
           <button
             onClick={markAllRead}
-            className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
+            className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium flex-shrink-0 whitespace-nowrap"
           >
             <CheckCheck className="w-4 h-4" />
             Mark all read

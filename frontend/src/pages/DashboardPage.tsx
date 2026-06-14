@@ -74,7 +74,7 @@ export default function DashboardPage() {
   const unreadAlerts = alerts.filter((a) => !a.is_read).length;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="mb-6 flex items-center gap-4">
         <Mascot variant="auto" size={72} className="flex-shrink-0 hidden sm:block" />
         <div>

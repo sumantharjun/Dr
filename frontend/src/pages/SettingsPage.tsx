@@ -27,7 +27,7 @@ export default function SettingsPage() {
 
   if (!baby) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
+      <div className="p-4 sm:p-6 max-w-2xl mx-auto">
         <p className="text-gray-500">Baby profile not loaded.</p>
       </div>
     );
@@ -63,7 +63,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-gray-500 text-sm mt-1">

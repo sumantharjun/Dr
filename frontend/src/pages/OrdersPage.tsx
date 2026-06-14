@@ -110,16 +110,16 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
           <p className="text-gray-500 text-sm mt-1">Shop for cleaning supplies and accessories</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-shrink-0">
           <button
             onClick={() => setTab("shop")}
-            className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
+            className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors whitespace-nowrap ${
               tab === "shop" ? "bg-primary-600 text-white" : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
             }`}
           >
@@ -127,7 +127,7 @@ export default function OrdersPage() {
           </button>
           <button
             onClick={() => setTab("orders")}
-            className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
+            className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors whitespace-nowrap ${
               tab === "orders" ? "bg-primary-600 text-white" : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
             }`}
           >
