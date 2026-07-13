@@ -3,12 +3,10 @@ import {
   LayoutDashboard,
   Droplets,
   Settings2,
-  Bell,
   ShoppingBag,
   Activity,
   Settings,
 } from "lucide-react";
-import { useAlertStore } from "../../store/alertStore";
 import { clsx } from "clsx";
 import ProfileMenu from "./ProfileMenu";
 
@@ -16,7 +14,6 @@ const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/feeding", label: "Feeding", icon: Droplets },
   { to: "/controls", label: "Controls", icon: Settings2 },
-  { to: "/alerts", label: "Alerts", icon: Bell },
   { to: "/orders", label: "Shopping", icon: ShoppingBag },
   { to: "/activity", label: "Activity", icon: Activity },
   { to: "/settings", label: "Settings", icon: Settings },
@@ -30,8 +27,6 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
-  const unreadCount = useAlertStore((s) => s.unreadCount());
-
   return (
     <>
       {/* Backdrop — only rendered/visible on mobile when the drawer is open. */}
@@ -89,11 +84,6 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           >
             <Icon className="w-5 h-5 flex-shrink-0" />
             <span>{label}</span>
-            {label === "Alerts" && unreadCount > 0 && (
-              <span className="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
           </NavLink>
         ))}
       </nav>

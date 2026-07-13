@@ -4,6 +4,7 @@ import Sidebar from "./Sidebar";
 import MiniSidebar from "./MiniSidebar";
 import ToastContainer from "./ToastContainer";
 import ThemeToggle from "../ThemeToggle";
+import AlertBell from "./AlertBell";
 import { useAuthStore } from "../../store/authStore";
 import { useAlertStore } from "../../store/alertStore";
 import { useThemeStore } from "../../store/themeStore";
@@ -68,6 +69,7 @@ export default function AppLayout() {
         {/* Top header bar — theme toggle, visible on every page */}
         <header className="h-14 flex items-center gap-2 px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur sticky top-0 z-30">
           <div className="flex-1" />
+          <AlertBell />
           <ThemeToggle />
         </header>
         <main className="flex-1 overflow-auto">

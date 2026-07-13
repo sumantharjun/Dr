@@ -1,28 +1,11 @@
 import { useEffect } from "react";
-import {
-  Bell,
-  CheckCheck,
-  Trash2,
-  AlertTriangle,
-  Info,
-  Zap,
-  Thermometer,
-  Wrench,
-  Droplet,
-  AlertOctagon,
-} from "lucide-react";
+import { Bell, CheckCheck, Trash2 } from "lucide-react";
 import api from "../services/api";
 import { useAlertStore } from "../store/alertStore";
 import { useToastStore } from "../store/toastStore";
 import { alertMeta } from "../types/alerts";
+import { AlertTypeIcon, severityIconColor, severityBadge } from "../components/alerts/AlertIcon";
 import { formatDistanceToNow } from "date-fns";
-
-const TYPE_ICON: Record<string, React.FC<{ className?: string }>> = {
-  overheating: Thermometer,
-  malfunction: Wrench,
-  washing_error: AlertOctagon,
-  low_detergent: Droplet,
-};
 
 export default function AlertsPage() {
   const { alerts, setAlerts, markRead, removeAlert } = useAlertStore();
@@ -144,38 +127,5 @@ export default function AlertsPage() {
         </div>
       )}
     </div>
-  );
-}
-
-function AlertTypeIcon({
-  alertType,
-  severity,
-}: {
-  alertType: string;
-  severity: string;
-}) {
-  const TypeIcon = TYPE_ICON[alertType];
-  if (TypeIcon) return <TypeIcon className="w-5 h-5" />;
-  if (severity === "info") return <Info className="w-5 h-5" />;
-  if (severity === "critical") return <Zap className="w-5 h-5" />;
-  return <AlertTriangle className="w-5 h-5" />;
-}
-
-function severityIconColor(severity: string) {
-  return (
-    { info: "text-blue-500", warning: "text-yellow-500", error: "text-red-500", critical: "text-red-700" }[
-      severity
-    ] || "text-gray-400"
-  );
-}
-
-function severityBadge(severity: string) {
-  return (
-    {
-      info: "bg-blue-100 text-blue-700",
-      warning: "bg-yellow-100 text-yellow-700",
-      error: "bg-red-100 text-red-700",
-      critical: "bg-red-200 text-red-800",
-    }[severity] || "bg-gray-100 text-gray-600"
   );
 }
