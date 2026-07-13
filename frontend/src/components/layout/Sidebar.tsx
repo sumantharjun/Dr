@@ -7,7 +7,6 @@ import {
   ShoppingBag,
   Activity,
   Settings,
-  X,
 } from "lucide-react";
 import { useAlertStore } from "../../store/alertStore";
 import { clsx } from "clsx";
@@ -56,14 +55,6 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       >
       {/* Logo */}
       <div className="relative flex flex-col items-center gap-2 px-5 py-5 border-b border-gray-200">
-        {/* Close button — drawer only (mobile). */}
-        <button
-          onClick={onClose}
-          aria-label="Close menu"
-          className="lg:hidden absolute top-3 right-3 p-1.5 rounded-lg text-gray-500 hover:bg-gray-100"
-        >
-          <X className="w-5 h-5" />
-        </button>
         <img
           src="/mascots/UNOBOT_Logo.png"
           alt="UNOVA"
