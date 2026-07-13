@@ -18,7 +18,7 @@ const navItems = [
   { to: "/feeding", label: "Feeding", icon: Droplets },
   { to: "/controls", label: "Controls", icon: Settings2 },
   { to: "/alerts", label: "Alerts", icon: Bell },
-  { to: "/orders", label: "Orders", icon: ShoppingBag },
+  { to: "/orders", label: "Shopping", icon: ShoppingBag },
   { to: "/activity", label: "Activity", icon: Activity },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
