@@ -65,7 +65,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           <X className="w-5 h-5" />
         </button>
         <img
-          src="/mascots/UNOVA_Logo.png"
+          src="/mascots/UNOBOT_Logo.png"
           alt="UNOVA"
           className="w-48 h-auto"
         />
@@ -74,7 +74,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           <div className="leading-tight">
             {/* <span className="text-xs font-semibold text-gray-700 block">UNOSOL</span> */}
             <span className="text-[9px] tracking-widest text-primary-600 font-medium">
-              SAFE · TRUST · PRECISE
+              SAFE · TRUSTWORTHY · PRECISE
             </span>
           </div>
         </div>

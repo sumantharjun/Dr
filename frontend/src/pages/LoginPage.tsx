@@ -50,14 +50,14 @@ export default function LoginPage() {
       <div className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md">
         <div className="flex flex-col items-center mb-6">
           <img
-            src="/mascots/UNOVA_Logo.png"
+            src="/mascots/UNOBOT_Logo.png"
             alt="UNOVA"
-            className="w-48 sm:w-64 max-w-full h-auto mb-4"
+            className="w-48 sm:w-64 max-w-full h-auto mb-4 translate-x-3"
           />
-          <Mascot variant="sleeping" size={170} />
+          <Mascot variant="sleeping" size={170} className="-translate-x-3" />
           {/* <h2 className="text-xl font-bold text-gray-900 mt-2">UNOSOL</h2> */}
           <p className="text-xs tracking-widest text-primary-600 font-medium mt-1">
-            SAFE · TRUST · PRECISE
+            SAFE · TRUSTWORTHY · PRECISE
           </p>
           <p className="text-gray-500 text-sm mt-3">Sign in to your account</p>
         </div>

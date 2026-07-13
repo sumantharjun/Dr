@@ -46,7 +46,7 @@ export default function BabySetupPage() {
       <div className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-lg">
         <div className="flex flex-col items-center mb-6">
           <img
-            src="/mascots/UNOVA_Logo.png"
+            src="/mascots/UNOBOT_Logo.png"
             alt="UNOVA"
             className="w-56 sm:w-72 max-w-full h-auto mb-4"
           />

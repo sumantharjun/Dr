@@ -15,11 +15,14 @@ class Settings(BaseSettings):
     # ── Password reset ──────────────────────────────────────────────────────
     PASSWORD_RESET_EXPIRE_MINUTES: int = 60
     # Base URL of the frontend, used to build the reset link in the email.
-    FRONTEND_URL: str = "http://localhost:5173"
+    FRONTEND_URL: str = "https://unova-api.vsngroups.com"
 
-    # ── SMTP (outbound email) ───────────────────────────────────────────────
-    # Leave SMTP_HOST blank to run without a mail server: emails are logged /
-    # captured in an in-memory outbox instead of being sent (dev/test).
+    # ── Outbound email ──────────────────────────────────────────────────────
+    # Preferred: set RESEND_API_KEY to send via Resend's HTTPS API (port 443 —
+    # immune to the SMTP port blocking many networks impose).
+    # Fallback: set SMTP_HOST to send via SMTP. If neither is set (dev/test),
+    # emails are logged / captured in an in-memory outbox instead of being sent.
+    RESEND_API_KEY: str = ""
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""

@@ -13,8 +13,9 @@ import pathlib
 TEST_DB = "/tmp/sbf_pytest.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB}"
 os.environ["SECRET_KEY"] = "test-secret-" + "x" * 40  # passes the strong-key check
-# Force the no-SMTP (outbox) mailer in tests so they never send real email,
-# overriding any SMTP creds in .env. Tests assert on email.outbox.
+# Force the no-transport (outbox) mailer in tests so they never send real email,
+# overriding any creds in .env. Tests assert on email.outbox.
+os.environ["RESEND_API_KEY"] = ""
 os.environ["SMTP_HOST"] = ""
 os.environ["FRONTEND_URL"] = "http://testserver"
 
