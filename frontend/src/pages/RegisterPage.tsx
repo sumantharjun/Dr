@@ -59,7 +59,7 @@ export default function RegisterPage() {
         <div className="flex flex-col items-center mb-6">
           <img
             src="/mascots/UNOBOT_Logo.png"
-            alt="UNOVA"
+            alt="UNOBOT"
             className="w-48 sm:w-64 max-w-full h-auto mb-4"
           />
           <Mascot variant="sleeping" size={170} />
@@ -100,7 +100,6 @@ export default function RegisterPage() {
               className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
                 fieldErrors.email ? "border-red-400 focus:ring-red-400" : "border-gray-300 focus:ring-primary-500"
               }`}
-              placeholder="you@example.com"
             />
             {fieldErrors.email && <p className="text-xs text-red-600 mt-1">{fieldErrors.email}</p>}
           </div>

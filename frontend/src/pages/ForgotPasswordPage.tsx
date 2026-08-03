@@ -33,7 +33,7 @@ export default function ForgotPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cream-50 via-cream-100 to-sky-brand/30 p-4">
       <div className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md">
         <div className="flex flex-col items-center mb-6">
-          <img src="/mascots/UNOBOT_Logo.png" alt="UNOVA" className="w-48 sm:w-64 max-w-full h-auto mb-4 translate-x-3" />
+          <img src="/mascots/UNOBOT_Logo.png" alt="UNOBOT" className="w-48 sm:w-64 max-w-full h-auto mb-4 translate-x-3" />
           <Mascot variant="sleeping" size={150} className="-translate-x-3" />
           <h2 className="text-xl font-bold text-gray-900 mt-2">Forgot password</h2>
           <p className="text-gray-500 text-sm mt-2 text-center">
@@ -64,7 +64,6 @@ export default function ForgotPasswordPage() {
                 className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
                   fieldError ? "border-red-400 focus:ring-red-400" : "border-gray-300 focus:ring-primary-500"
                 }`}
-                placeholder="you@example.com"
               />
               {fieldError && <p className="text-xs text-red-600 mt-1">{fieldError}</p>}
             </div>

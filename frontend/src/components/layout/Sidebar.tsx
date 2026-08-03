@@ -52,18 +52,16 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       <div className="relative flex flex-col items-center gap-2 px-5 py-5 border-b border-gray-200">
         <img
           src="/mascots/UNOBOT_Logo.png"
-          alt="UNOVA"
+          alt="UNOBOT"
           className="w-48 h-auto"
         />
-        <div className="flex items-center gap-2">
-          {/* <Mascot variant="auto" size={28} /> */}
+        {/* <div className="flex items-center gap-2">
           <div className="leading-tight">
-            {/* <span className="text-xs font-semibold text-gray-700 block">UNOSOL</span> */}
             <span className="text-[9px] tracking-widest text-primary-600 font-medium">
               SAFE · TRUSTWORTHY · PRECISE
             </span>
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* Nav */}

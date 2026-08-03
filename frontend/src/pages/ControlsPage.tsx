@@ -1,22 +1,30 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Settings2, Wind, Zap, Thermometer, Square, Sparkles } from "lucide-react";
+import { Settings2, Wind, Zap, Thermometer, Square, Sparkles, Check } from "lucide-react";
+import { clsx } from "clsx";
+import ConfirmDialog from "../components/ConfirmDialog";
 import api from "../services/api";
 import { Device, WashingCycle, DispenseLog, UvCycle } from "../types";
 import { format, formatDistanceToNow } from "date-fns";
 import { useToastStore } from "../store/toastStore";
 import { useWsEventStore } from "../store/wsEventStore";
 
+// Selected modes are filled rather than tinted. A `-50` tint reads as near-white
+// in both themes, and dark mode inverts the grey label on top of it to near-white
+// too, so the text vanished. Filled `-700` + white text keeps AA contrast in both
+// themes, and hover only moves the border so it can't mimic the selected state.
 const WASH_MODES = [
-  { id: "full_cycle",  label: "Full Cycle",  description: "Wash, Dry, Sterilize & Fill", icon: Zap,         color: "border-primary-300 hover:border-primary-500 hover:bg-primary-50",  activeColor: "border-primary-500 bg-primary-50"  },
-  { id: "steam_dry",   label: "Steam & Dry", description: "Steam clean, then dry",        icon: Wind,        color: "border-green-300 hover:border-green-500 hover:bg-green-50",        activeColor: "border-green-500 bg-green-50"       },
-  { id: "dry",         label: "Dry",         description: "Dry only",                     icon: Thermometer, color: "border-blue-300 hover:border-blue-500 hover:bg-blue-50",           activeColor: "border-blue-500 bg-blue-50"         },
+  { id: "full_cycle",  label: "Full Cycle",  description: "Wash, Dry, Sterilize & Fill", icon: Zap,         idle: "border-primary-200 hover:border-primary-500 hover:bg-gray-50", active: "border-primary-700 bg-primary-700" },
+  { id: "steam_dry",   label: "Steam & Dry", description: "Steam clean, then dry",        icon: Wind,        idle: "border-green-200 hover:border-green-500 hover:bg-gray-50",     active: "border-green-700 bg-green-700"     },
+  { id: "dry",         label: "Dry",         description: "Dry only",                     icon: Thermometer, idle: "border-blue-200 hover:border-blue-500 hover:bg-gray-50",       active: "border-blue-700 bg-blue-700"       },
 ];
 
 export default function ControlsPage() {
   const [device, setDevice] = useState<Device | null>(null);
   const selectedDevice = device?.id ?? null;
   const [selectedMode, setSelectedMode] = useState<string>("");
+  // Which physical action is awaiting confirmation, if any.
+  const [confirming, setConfirming] = useState<null | "wash" | "dispense" | "uv">(null);
   const [washHistory, setWashHistory] = useState<WashingCycle[]>([]);
   const [dispenseHistory, setDispenseHistory] = useState<DispenseLog[]>([]);
   const [uvHistory, setUvHistory] = useState<UvCycle[]>([]);
@@ -194,20 +202,33 @@ export default function ControlsPage() {
     }
   }
 
-  async function handleDispense() {
-    if (!selectedDevice) return;
+  /**
+   * Parse and validate the dispense form, toasting on the first problem.
+   * Split out from handleDispense so validation runs *before* the confirmation
+   * prompt — asking "are you sure?" and only then rejecting the input is a poor
+   * sequence to put the user through.
+   */
+  function parseDispense() {
     const temp = Number(dispense.temperature_c);
     const vol = Number(dispense.volume_ml);
     if (isNaN(temp) || isNaN(vol)) {
       addToast("Enter valid temperature and volume", "error");
-      return;
+      return null;
     }
     // Scoops is optional — only send it if the user entered a value.
     const scoops = dispense.scoop_number.trim() === "" ? null : Number(dispense.scoop_number);
     if (scoops !== null && (isNaN(scoops) || scoops < 0)) {
       addToast("Enter a valid scoop count", "error");
-      return;
+      return null;
     }
+    return { temp, vol, scoops };
+  }
+
+  async function handleDispense() {
+    if (!selectedDevice) return;
+    const parsed = parseDispense();
+    if (!parsed) return;
+    const { temp, vol, scoops } = parsed;
     setDispenseLoading(true);
     try {
       const { data } = await api.post("/dispensing/", {
@@ -249,6 +270,20 @@ export default function ControlsPage() {
     } finally {
       setDispenseLoading(false);
     }
+  }
+
+  function requestDispense() {
+    if (!selectedDevice) return;
+    if (!parseDispense()) return; // reject bad input before prompting
+    setConfirming("dispense");
+  }
+
+  function runConfirmed() {
+    const action = confirming;
+    setConfirming(null);
+    if (action === "wash") handleStartWash();
+    else if (action === "dispense") handleDispense();
+    else if (action === "uv") handleUvStart();
   }
 
   async function handleStop(type: "wash" | "dispense") {
@@ -294,6 +329,34 @@ export default function ControlsPage() {
 
   const washIsActive = !!washProg && washProg.status !== "completed" && washProg.status !== "failed";
   const dispenseIsActive = !!dispenseProg && dispenseProg.status !== "completed" && dispenseProg.status !== "failed";
+
+  // Confirmation copy states exactly what the hardware will do, so the prompt
+  // carries information rather than just adding a click.
+  const modeMeta = WASH_MODES.find((m) => m.id === selectedMode);
+  const CONFIRMATIONS = {
+    wash: {
+      icon: Settings2,
+      tone: "primary" as const,
+      title: `Start the ${modeMeta?.label ?? "wash"} cycle?`,
+      message: `${modeMeta?.description ?? "The selected cycle"} will run on the device. Check that bottles are loaded and the lid is closed.`,
+      confirmLabel: "Start Wash",
+    },
+    dispense: {
+      icon: Thermometer,
+      tone: "primary" as const,
+      title: `Dispense ${dispense.volume_ml || "—"} ml?`,
+      message: `Milk will be dispensed at ${dispense.temperature_c || "—"}°C. Make sure a bottle is in position.`,
+      confirmLabel: "Dispense",
+    },
+    uv: {
+      icon: Sparkles,
+      tone: "warning" as const,
+      title: "Start UV sterilization?",
+      message: "The UV lamp will switch on. Keep the lid closed and hands clear while the cycle runs.",
+      confirmLabel: "Start UV",
+    },
+  };
+  const activeConfirm = confirming ? CONFIRMATIONS[confirming] : null;
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto">
@@ -473,30 +536,41 @@ export default function ControlsPage() {
           </div>
           <p className="text-sm text-gray-500 mb-4">Select a mode to start.</p>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            {WASH_MODES.map((mode) => (
-              <button
-                key={mode.id}
-                onClick={() => setSelectedMode(mode.id)}
-                disabled={washIsActive}
-                className={`border-2 rounded-xl p-3 text-left transition-all disabled:opacity-40 ${
-                  selectedMode === mode.id ? mode.activeColor : mode.color
-                }`}
-              >
-                <mode.icon className="w-5 h-5 mb-1 text-gray-600" />
-                <p className="text-sm font-semibold text-gray-800">{mode.label}</p>
-                <p className="text-xs text-gray-500">{mode.description}</p>
-              </button>
-            ))}
+            {WASH_MODES.map((mode) => {
+              const active = selectedMode === mode.id;
+              return (
+                <button
+                  key={mode.id}
+                  onClick={() => setSelectedMode(mode.id)}
+                  disabled={washIsActive}
+                  aria-pressed={active}
+                  className={clsx(
+                    "relative border-2 rounded-xl p-3 text-left transition-all disabled:opacity-40",
+                    active ? mode.active : mode.idle,
+                  )}
+                >
+                  {/* Non-colour cue as well as the fill — colour alone can't carry state (WCAG 1.4.1). */}
+                  {active && <Check className="w-4 h-4 text-white absolute top-2 right-2" />}
+                  <mode.icon className={clsx("w-5 h-5 mb-1", active ? "text-white" : "text-gray-600")} />
+                  <p className={clsx("text-sm font-semibold", active ? "text-white" : "text-gray-800")}>
+                    {mode.label}
+                  </p>
+                  <p className={clsx("text-xs", active ? "text-white/90" : "text-gray-500")}>
+                    {mode.description}
+                  </p>
+                </button>
+              );
+            })}
           </div>
           <button
-            onClick={handleStartWash}
+            onClick={() => setConfirming("wash")}
             disabled={!selectedMode || !selectedDevice || washLoading || washIsActive}
             className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
           >
             {washLoading ? "Starting…" : washIsActive ? "Cycle running…" : "Start Wash Cycle"}
           </button>
           <button
-            onClick={handleUvStart}
+            onClick={() => setConfirming("uv")}
             disabled={!selectedDevice || uvLoading || uvProg?.status === "started"}
             title="Send a UV sterilization start command to the device"
             className="w-full mt-2 flex items-center justify-center gap-2 border border-purple-300 text-purple-700 hover:bg-purple-50 disabled:opacity-50 py-2.5 rounded-lg text-sm font-medium transition-colors"
@@ -551,7 +625,7 @@ export default function ControlsPage() {
             </div>
           </div>
           <button
-            onClick={handleDispense}
+            onClick={requestDispense}
             disabled={!selectedDevice || dispenseLoading || dispenseIsActive}
             className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
           >
@@ -559,6 +633,15 @@ export default function ControlsPage() {
           </button>
         </div>
       </div>
+
+      {activeConfirm && (
+        <ConfirmDialog
+          open
+          {...activeConfirm}
+          onConfirm={runConfirmed}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
 
       {/* Logs — wash cycles & dispenses side by side */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -672,21 +755,36 @@ export default function ControlsPage() {
   );
 }
 
+/**
+ * Presentation for every `status` / `ended_reason` value the wash, dispense and
+ * UV models can emit. Labels are written out rather than derived, because the
+ * raw enums (`timed_out`, `superseded`) mean nothing to a parent reading a log.
+ */
+const STATUS_STYLES: Record<string, { label: string; className: string }> = {
+  pending:    { label: "Pending",     className: "bg-yellow-100 text-yellow-700" },
+  running:    { label: "Running",     className: "bg-blue-100 text-blue-700"     },
+  dispensing: { label: "Dispensing",  className: "bg-blue-100 text-blue-700"     },
+  started:    { label: "In Progress", className: "bg-blue-100 text-blue-700"     },
+  completed:  { label: "Completed",   className: "bg-green-100 text-green-700"   },
+  failed:     { label: "Failed",      className: "bg-red-100 text-red-700"       },
+  cancelled:  { label: "Cancelled",   className: "bg-gray-200 text-gray-700"     },
+  timed_out:  { label: "Incomplete",  className: "bg-orange-100 text-orange-700" },
+  superseded: { label: "Replaced",    className: "bg-gray-200 text-gray-700"     },
+};
+
+/** Last-resort formatting so a new backend enum can't leak as `snake_case`. */
+function prettifyStatus(status: string) {
+  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    pending:    "bg-yellow-100 text-yellow-700",
-    running:    "bg-blue-100 text-blue-700",
-    dispensing: "bg-blue-100 text-blue-700",
-    started:    "bg-blue-100 text-blue-700",
-    completed:  "bg-green-100 text-green-700",
-    failed:     "bg-red-100 text-red-700",
-    cancelled:  "bg-gray-200 text-gray-700",
-    timed_out:  "bg-orange-100 text-orange-700",
-    superseded: "bg-gray-200 text-gray-700",
-  };
+  const style = STATUS_STYLES[status];
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] || "bg-gray-100 text-gray-600"}`}>
-      {status}
+    <span
+      title={status}
+      className={`text-xs px-2 py-0.5 rounded-full font-medium ${style?.className ?? "bg-gray-100 text-gray-600"}`}
+    >
+      {style?.label ?? prettifyStatus(status)}
     </span>
   );
 }

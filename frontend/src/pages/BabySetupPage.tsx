@@ -47,7 +47,7 @@ export default function BabySetupPage() {
         <div className="flex flex-col items-center mb-6">
           <img
             src="/mascots/UNOBOT_Logo.png"
-            alt="UNOVA"
+            alt="UNOBOT"
             className="w-56 sm:w-72 max-w-full h-auto mb-4"
           />
           <Mascot variant="sleeping" size={180} />

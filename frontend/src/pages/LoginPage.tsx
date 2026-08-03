@@ -51,7 +51,7 @@ export default function LoginPage() {
         <div className="flex flex-col items-center mb-6">
           <img
             src="/mascots/UNOBOT_Logo.png"
-            alt="UNOVA"
+            alt="UNOBOT"
             className="w-48 sm:w-64 max-w-full h-auto mb-4 translate-x-3"
           />
           <Mascot variant="sleeping" size={170} className="-translate-x-3" />
@@ -81,7 +81,6 @@ export default function LoginPage() {
                   ? "border-red-400 focus:ring-red-400"
                   : "border-gray-300 focus:ring-primary-500"
               }`}
-              placeholder="you@example.com"
             />
             {fieldErrors.email && <p className="text-xs text-red-600 mt-1">{fieldErrors.email}</p>}
           </div>
@@ -132,7 +131,7 @@ export default function LoginPage() {
         <p className="text-center text-sm text-gray-500 mt-6">
           No account?{" "}
           <Link to="/register" className="text-primary-600 font-medium hover:underline">
-            Create one
+            Sign up
           </Link>
         </p>
       </div>

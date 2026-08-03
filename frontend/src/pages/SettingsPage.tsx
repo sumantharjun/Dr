@@ -169,17 +169,17 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
-        </section>
 
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={saving}
-            className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors"
-          >
-            {saving ? "Saving…" : "Save changes"}
-          </button>
-        </div>
+          <div className="flex justify-end mt-5 pt-4 border-t border-gray-100">
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors"
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </section>
       </form>
 
       {/* Device card */}

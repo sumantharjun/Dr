@@ -54,15 +54,18 @@ export default function DashboardPage() {
   const [schedule, setSchedule] = useState<FeedingSchedule | null>(null);
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
   const [metrics, setMetrics] = useState<MetricsSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingDevices, setLoadingDevices] = useState(true);
+  const [loadingSchedule, setLoadingSchedule] = useState(true);
+  const [loadingAlerts, setLoadingAlerts] = useState(true);
 
+  // Each request clears its own flag. Batching these in a Promise.all would pin
+  // every card to the slowest endpoint — including /metrics/summary, which no
+  // stat card reads and which the retry interceptor can stall for seconds.
   useEffect(() => {
-    Promise.all([
-      api.get("/devices/").then((r) => setDevices(r.data)),
-      api.get("/feeding/schedule").then((r) => setSchedule(r.data)),
-      api.get("/alerts/").then((r) => setAlerts(r.data)),
-      api.get("/metrics/summary").then((r) => setMetrics(r.data)).catch(() => {}),
-    ]).finally(() => setLoading(false));
+    api.get("/devices/").then((r) => setDevices(r.data)).catch(() => {}).finally(() => setLoadingDevices(false));
+    api.get("/feeding/schedule").then((r) => setSchedule(r.data)).catch(() => {}).finally(() => setLoadingSchedule(false));
+    api.get("/alerts/").then((r) => setAlerts(r.data)).catch(() => {}).finally(() => setLoadingAlerts(false));
+    api.get("/metrics/summary").then((r) => setMetrics(r.data)).catch(() => {});
   }, []);
 
   const device = devices[0] ?? null;
@@ -91,35 +94,37 @@ export default function DashboardPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {loading ? (
+        {loadingDevices ? (
+          <SkeletonCard />
+        ) : (
+          <StatCard
+            icon={Cpu}
+            label="Device"
+            value={deviceLabel}
+            color={
+              !device
+                ? "bg-gray-400"
+                : device.status === "online"
+                ? "bg-green-500"
+                : "bg-gray-400"
+            }
+            to="/devices"
+          />
+        )}
+        {loadingSchedule ? (
           <>
-            <SkeletonCard />
-            <SkeletonCard />
             <SkeletonCard />
             <SkeletonCard />
           </>
         ) : (
           <>
             <StatCard
-              icon={Cpu}
-              label="Device"
-              value={deviceLabel}
-              color={
-                !device
-                  ? "bg-gray-400"
-                  : device.status === "online"
-                  ? "bg-green-500"
-                  : "bg-gray-400"
-              }
-              to="/devices"
-            />
-            <StatCard
               icon={Droplets}
               label="Last Feed"
               value={
                 schedule?.last_feed_time
                   ? formatDistanceToNow(new Date(schedule.last_feed_time), { addSuffix: true })
-                  : "No data"
+                  : "—"
               }
               color="bg-primary-500"
               to="/feeding"
@@ -135,19 +140,23 @@ export default function DashboardPage() {
               color="bg-green-500"
               to="/feeding"
             />
-            <StatCard
-              icon={Bell}
-              label="Unread Alerts"
-              value={unreadAlerts}
-              color={unreadAlerts > 0 ? "bg-red-500" : "bg-gray-400"}
-              to="/alerts"
-            />
           </>
+        )}
+        {loadingAlerts ? (
+          <SkeletonCard />
+        ) : (
+          <StatCard
+            icon={Bell}
+            label="Unread Alerts"
+            value={unreadAlerts}
+            color={unreadAlerts > 0 ? "bg-red-500" : "bg-gray-400"}
+            to="/alerts"
+          />
         )}
       </div>
 
       {/* Environmental savings */}
-      {!loading && metrics && (metrics.power_saved_kwh > 0 || metrics.water_saved_liters > 0) && (
+      {metrics && (metrics.power_saved_kwh > 0 || metrics.water_saved_liters > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
           <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-5 flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-yellow-400 flex items-center justify-center">
@@ -179,7 +188,7 @@ export default function DashboardPage() {
             <h2 className="font-semibold text-gray-900">Device</h2>
             <Link to="/devices" className="text-sm text-primary-600 hover:underline">Manage</Link>
           </div>
-          {loading ? (
+          {loadingDevices ? (
             <div className="space-y-3">
               {[1, 2].map((i) => (
                 <div key={i} className="flex items-center justify-between animate-pulse">
@@ -219,7 +228,7 @@ export default function DashboardPage() {
             <h2 className="font-semibold text-gray-900">Recent Alerts</h2>
             <Link to="/alerts" className="text-sm text-primary-600 hover:underline">View all</Link>
           </div>
-          {loading ? (
+          {loadingAlerts ? (
             <div className="space-y-3">
               {[1, 2].map((i) => (
                 <div key={i} className="flex items-start gap-3 animate-pulse">

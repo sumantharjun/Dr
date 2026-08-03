@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef } from "react";
-import { ShoppingBag, Plus, Minus, ShoppingCart, Package, XCircle, CheckCircle2, Truck, Clock, Search } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ShoppingBag, Plus, Minus, ShoppingCart, Package, XCircle, CheckCircle2, Truck, Clock, Search, X } from "lucide-react";
+import { clsx } from "clsx";
 import api from "../services/api";
 import { Order, Product } from "../types";
 import { CardSkeleton } from "../components/Skeleton";
@@ -17,6 +19,7 @@ export default function OrdersPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -59,6 +62,16 @@ export default function OrdersPage() {
         p.name.toLowerCase().includes(q) ||
         (p.description ?? "").toLowerCase().includes(q)
     );
+
+  // Escape closes the mobile cart sheet, matching ConfirmDialog.
+  useEffect(() => {
+    if (!cartSheetOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCartSheetOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cartSheetOpen]);
 
   function updateCart(id: number, delta: number) {
     setCart((prev) => {
@@ -150,7 +163,9 @@ export default function OrdersPage() {
       {/* ── SHOP TAB ── */}
       {tab === "shop" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
+          {/* Extra bottom padding clears the mobile cart bar so the last
+              product card isn't hidden underneath it. */}
+          <div className={clsx("lg:col-span-2", cartCount > 0 && "pb-20 lg:pb-0")}>
             <div className="relative mb-4">
               <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -240,45 +255,82 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* Cart */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 h-fit sticky top-6">
-            <div className="flex items-center gap-2 mb-4">
-              <ShoppingCart className="w-5 h-5 text-primary-600" />
-              <h2 className="font-semibold text-gray-900">Cart ({cartCount})</h2>
-            </div>
-            {cartCount === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">Your cart is empty</p>
-            ) : (
-              <>
-                <ul className="space-y-3 mb-4">
-                  {Object.entries(cart).map(([id, qty]) => {
-                    const p = products.find((p) => p.id === Number(id));
-                    if (!p) return null;
-                    return (
-                      <li key={id} className="flex justify-between text-sm">
-                        <span className="text-gray-700 flex-1 pr-2 truncate">{p.name}</span>
-                        <span className="text-gray-500 flex-shrink-0">
-                          ×{qty} · ₹{(p.price * qty).toFixed(2)}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <div className="border-t border-gray-100 pt-3 mb-4 flex justify-between font-semibold text-gray-900">
-                  <span>Total</span>
-                  <span>₹{cartTotal.toFixed(2)}</span>
-                </div>
-                <button
-                  onClick={handlePlaceOrder}
-                  disabled={placing}
-                  className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
-                >
-                  {placing ? "Placing order..." : "Place Order"}
-                </button>
-              </>
-            )}
+          {/* Cart — desktop only. Below lg it would stack under the whole
+              product list, so the sticky bar and sheet below take over. */}
+          <div className="hidden lg:block bg-white rounded-xl border border-gray-200 p-5 h-fit sticky top-6">
+            <CartPanel
+              cart={cart}
+              products={products}
+              cartCount={cartCount}
+              cartTotal={cartTotal}
+              placing={placing}
+              onPlaceOrder={handlePlaceOrder}
+            />
           </div>
         </div>
+      )}
+
+      {/* ── MOBILE CART ── summary bar + sheet, below lg only */}
+      {tab === "shop" && cartCount > 0 && (
+        <>
+          {/* Starts at left-14 to clear the MiniSidebar rail, which is fixed at
+              w-14 below lg — a fixed bar ignores AppLayout's pl-14. */}
+          <div className="lg:hidden fixed bottom-0 left-14 right-0 z-40 bg-white border-t border-gray-200 px-4 py-3 flex items-center gap-3">
+            <ShoppingCart className="w-5 h-5 text-primary-600 flex-shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-gray-900 leading-tight">
+                {cartCount} {cartCount === 1 ? "item" : "items"}
+              </p>
+              <p className="text-xs text-gray-500 leading-tight">₹{cartTotal.toFixed(2)}</p>
+            </div>
+            <button
+              onClick={() => setCartSheetOpen(true)}
+              className="flex-shrink-0 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            >
+              View cart
+            </button>
+          </div>
+
+          {cartSheetOpen &&
+            createPortal(
+              <div
+                className="lg:hidden fixed inset-0 z-[100] flex items-end bg-black/40"
+                onMouseDown={() => setCartSheetOpen(false)}
+              >
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Cart"
+                  className="w-full bg-white rounded-t-2xl p-5 max-h-[80vh] overflow-y-auto"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <ShoppingCart className="w-5 h-5 text-primary-600" />
+                      <h2 className="font-semibold text-gray-900">Cart ({cartCount})</h2>
+                    </div>
+                    <button
+                      onClick={() => setCartSheetOpen(false)}
+                      aria-label="Close cart"
+                      className="p-1 text-gray-400 hover:text-gray-600 rounded-md"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <CartPanel
+                    cart={cart}
+                    products={products}
+                    cartCount={cartCount}
+                    cartTotal={cartTotal}
+                    placing={placing}
+                    onPlaceOrder={handlePlaceOrder}
+                    hideHeading
+                  />
+                </div>
+              </div>,
+              document.body,
+            )}
+        </>
       )}
 
       {/* ── MY ORDERS TAB ── */}
@@ -393,6 +445,66 @@ function OrderProgressBar({ status }: { status: Order["status"] }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Cart contents — item list, total and Place Order.
+ *
+ * Rendered twice: in the desktop right-hand column and in the mobile sheet.
+ * The sheet supplies its own header with a close button, hence `hideHeading`.
+ */
+function CartPanel({
+  cart, products, cartCount, cartTotal, placing, onPlaceOrder, hideHeading,
+}: {
+  cart: Record<number, number>;
+  products: Product[];
+  cartCount: number;
+  cartTotal: number;
+  placing: boolean;
+  onPlaceOrder: () => void;
+  hideHeading?: boolean;
+}) {
+  return (
+    <>
+      {!hideHeading && (
+        <div className="flex items-center gap-2 mb-4">
+          <ShoppingCart className="w-5 h-5 text-primary-600" />
+          <h2 className="font-semibold text-gray-900">Cart ({cartCount})</h2>
+        </div>
+      )}
+      {cartCount === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-6">Your cart is empty</p>
+      ) : (
+        <>
+          <ul className="space-y-3 mb-4">
+            {Object.entries(cart).map(([id, qty]) => {
+              const p = products.find((p) => p.id === Number(id));
+              if (!p) return null;
+              return (
+                <li key={id} className="flex justify-between text-sm">
+                  <span className="text-gray-700 flex-1 pr-2 truncate">{p.name}</span>
+                  <span className="text-gray-500 flex-shrink-0">
+                    ×{qty} · ₹{(p.price * qty).toFixed(2)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="border-t border-gray-100 pt-3 mb-4 flex justify-between font-semibold text-gray-900">
+            <span>Total</span>
+            <span>₹{cartTotal.toFixed(2)}</span>
+          </div>
+          <button
+            onClick={onPlaceOrder}
+            disabled={placing}
+            className="w-full bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+          >
+            {placing ? "Placing order..." : "Place Order"}
+          </button>
+        </>
+      )}
+    </>
   );
 }
 

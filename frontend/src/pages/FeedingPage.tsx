@@ -4,7 +4,9 @@ import {
   LineChart, Line,
 } from "recharts";
 import { Plus, Droplets, Clock, Scale, BarChart3 } from "lucide-react";
-import { PanelSkeleton } from "../components/Skeleton";
+import { clsx } from "clsx";
+import { PanelSkeleton, Skeleton } from "../components/Skeleton";
+import DateTimeField, { toWire } from "../components/DateTimeField";
 import api from "../services/api";
 import { Device, FeedingAnalytics, FeedingLog, FeedingSchedule } from "../types";
 import { format, formatDistanceToNow } from "date-fns";
@@ -21,30 +23,33 @@ export default function FeedingPage() {
     milk_consumed_ml: "",
     method: "manual",
     notes: "",
-    feed_time: new Date().toISOString().slice(0, 16),
+    feed_time: toWire(new Date()),
   });
   const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loadingSchedule, setLoadingSchedule] = useState(true);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
+  const [loadingLogs, setLoadingLogs] = useState(true);
 
   const { addToast } = useToastStore();
   const weightReadings = useWsEventStore((s) => s.weightReadings);
   const lastFeedingEvent = useWsEventStore((s) => s.lastFeedingEvent);
 
-  const fetchAll = useCallback(async () => {
-    try {
-      const [logsRes, analyticsRes, scheduleRes, devicesRes] = await Promise.all([
-        api.get("/feeding/logs"),
-        api.get("/feeding/analytics?days=7"),
-        api.get("/feeding/schedule"),
-        api.get("/devices/"),
-      ]);
-      setLogs(logsRes.data);
-      setAnalytics(analyticsRes.data);
-      setSchedule(scheduleRes.data);
-      setDevices(devicesRes.data);
-    } finally {
-      setLoading(false);
-    }
+  // Fired independently rather than as one Promise.all: the schedule cards only
+  // need /feeding/schedule, and batching made them wait on the 7-day analytics
+  // aggregation and the log list too.
+  // Stamp the time when the modal opens, not when the page mounts. `form` is
+  // initialised once at mount, so reusing that value would show whenever the
+  // page happened to load rather than now.
+  const openForm = useCallback(() => {
+    setForm((f) => ({ ...f, feed_time: toWire(new Date()) }));
+    setShowForm(true);
+  }, []);
+
+  const fetchAll = useCallback(() => {
+    api.get("/feeding/schedule").then((r) => setSchedule(r.data)).catch(() => {}).finally(() => setLoadingSchedule(false));
+    api.get("/feeding/analytics?days=7").then((r) => setAnalytics(r.data)).catch(() => {}).finally(() => setLoadingAnalytics(false));
+    api.get("/feeding/logs").then((r) => setLogs(r.data)).catch(() => {}).finally(() => setLoadingLogs(false));
+    api.get("/devices/").then((r) => setDevices(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -79,7 +84,7 @@ export default function FeedingPage() {
         milk_consumed_ml: "",
         method: "manual",
         notes: "",
-        feed_time: new Date().toISOString().slice(0, 16),
+        feed_time: toWire(new Date()),
       });
       addToast("Feeding log saved", "success");
       fetchAll();
@@ -105,7 +110,7 @@ export default function FeedingPage() {
           <p className="text-gray-500 text-sm mt-1">Track and monitor your baby's feeding</p>
         </div>
         <button
-          onClick={() => setShowForm(true)}
+          onClick={openForm}
           className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors flex-shrink-0 whitespace-nowrap"
         >
           <Plus className="w-4 h-4" /> Log Feeding
@@ -126,14 +131,14 @@ export default function FeedingPage() {
       )}
 
       {/* Schedule cards */}
-      {loading && (
+      {loadingSchedule && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <PanelSkeleton />
           <PanelSkeleton />
           <PanelSkeleton />
         </div>
       )}
-      {!loading && schedule && (
+      {!loadingSchedule && schedule && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <ScheduleCard
             icon={Droplets}
@@ -141,7 +146,7 @@ export default function FeedingPage() {
             value={
               schedule.last_feed_time
                 ? formatDistanceToNow(new Date(schedule.last_feed_time), { addSuffix: true })
-                : "No data"
+                : "—"
             }
             color="text-primary-600 bg-primary-50"
           />
@@ -172,8 +177,17 @@ export default function FeedingPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-semibold text-gray-900 mb-4">Daily Milk Intake (ml) — Last 7 Days</h2>
-          {analytics.length === 0 ? (
-            <ChartEmpty message="No feeding data yet — logged feeds will appear here." />
+          {loadingAnalytics ? (
+            <ChartSkeleton />
+          ) : analytics.length === 0 ? (
+            <EmptyState
+              className="h-[200px]"
+              icon={BarChart3}
+              title="No feeding data yet"
+              description="Log a feed to see daily intake here."
+              actionLabel="Log Feeding"
+              onAction={openForm}
+            />
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={analytics}>
@@ -188,8 +202,17 @@ export default function FeedingPage() {
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-semibold text-gray-900 mb-4">Feeding Count — Last 7 Days</h2>
-          {analytics.length === 0 ? (
-            <ChartEmpty message="No feeds recorded in the last 7 days." />
+          {loadingAnalytics ? (
+            <ChartSkeleton />
+          ) : analytics.length === 0 ? (
+            <EmptyState
+              className="h-[200px]"
+              icon={BarChart3}
+              title="No feeds in the last 7 days"
+              description="Log a feed to start building your 7-day trend."
+              actionLabel="Log Feeding"
+              onAction={openForm}
+            />
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={analytics}>
@@ -207,16 +230,14 @@ export default function FeedingPage() {
       {/* Manual entry modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
             <h2 className="font-bold text-lg text-gray-900 mb-4">Log Feeding</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
-                <input
-                  type="datetime-local"
+                <DateTimeField
                   value={form.feed_time}
-                  onChange={(e) => setForm({ ...form, feed_time: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  onChange={(v) => setForm({ ...form, feed_time: v })}
                 />
               </div>
               <div>
@@ -280,11 +301,17 @@ export default function FeedingPage() {
         <div className="px-5 py-4 border-b border-gray-200">
           <h2 className="font-semibold text-gray-900">Feeding History</h2>
         </div>
-        {logs.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
-            <Droplets className="w-10 h-10 mx-auto mb-2 opacity-40" />
-            <p className="text-sm">No feeding logs yet</p>
-          </div>
+        {loadingLogs ? (
+          <TableSkeleton />
+        ) : logs.length === 0 ? (
+          <EmptyState
+            className="py-12"
+            icon={Droplets}
+            title="No feeding logs yet"
+            description="Record your first feed to start tracking intake."
+            actionLabel="Log Feeding"
+            onAction={openForm}
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -336,11 +363,67 @@ function ScheduleCard({ icon: Icon, label, value, color }: {
   );
 }
 
-function ChartEmpty({ message }: { message: string }) {
+// Static class strings — Tailwind only picks up arbitrary values it can see in
+// the source, so these can't be built from a template literal.
+const BAR_HEIGHTS = ["h-[45%]", "h-[70%]", "h-[35%]", "h-[85%]", "h-[55%]", "h-[75%]", "h-[60%]"];
+
+/** Chart placeholder. Same 200px height as the chart and EmptyState so the card never resizes. */
+function ChartSkeleton() {
   return (
-    <div className="h-[200px] flex flex-col items-center justify-center text-center text-gray-400 gap-2">
-      <BarChart3 className="w-8 h-8 text-gray-300" />
-      <p className="text-sm max-w-[14rem]">{message}</p>
+    <div className="h-[200px] flex items-end gap-3 px-2 pb-6">
+      {BAR_HEIGHTS.map((h, i) => (
+        <Skeleton key={i} className={`flex-1 ${h}`} />
+      ))}
+    </div>
+  );
+}
+
+/** Row placeholders for the feeding history table. */
+function TableSkeleton() {
+  return (
+    <div className="divide-y divide-gray-100">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="flex items-center gap-4 px-5 py-3.5">
+          <Skeleton className="h-3.5 w-32" />
+          <Skeleton className="h-3.5 w-16" />
+          <Skeleton className="h-3.5 w-20" />
+          <Skeleton className="h-3.5 flex-1" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Empty state that prompts an action instead of just reporting absence.
+ * `onAction` is optional — omit it to render the message without a button.
+ */
+function EmptyState({ icon: Icon, title, description, actionLabel, onAction, className }: {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={clsx(
+        "flex flex-col items-center justify-center text-center gap-1.5 px-4",
+        className,
+      )}
+    >
+      <Icon className="w-8 h-8 text-gray-300" />
+      <p className="text-sm font-medium text-gray-500">{title}</p>
+      <p className="text-xs text-gray-400 max-w-[15rem]">{description}</p>
+      {onAction && actionLabel && (
+        <button
+          onClick={onAction}
+          className="mt-2 flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        >
+          <Plus className="w-4 h-4" /> {actionLabel}
+        </button>
+      )}
     </div>
   );
 }
