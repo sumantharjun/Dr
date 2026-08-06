@@ -8,10 +8,24 @@ import { clsx } from "clsx";
 import { PanelSkeleton, Skeleton } from "../components/Skeleton";
 import DateTimeField, { toWire } from "../components/DateTimeField";
 import api from "../services/api";
-import { Device, FeedingAnalytics, FeedingLog, FeedingSchedule } from "../types";
+import { Device, FeedingAnalytics, FeedingLog, FeedingSchedule, MilkType } from "../types";
 import { format, formatDistanceToNow } from "date-fns";
 import { useToastStore } from "../store/toastStore";
 import { useWsEventStore } from "../store/wsEventStore";
+
+/**
+ * Single source for the milk-type options and their presentation — the form
+ * select and the history badge read from the same list, so a new type added to
+ * the backend enum only needs adding here once.
+ * Values must match `VALID_MILK_TYPES` in `backend/app/schemas/feeding.py`.
+ */
+const MILK_TYPES: { value: MilkType; label: string; className: string }[] = [
+  { value: "breast_milk", label: "Breast Milk", className: "bg-pink-100 text-pink-700"     },
+  { value: "formula",     label: "Formula",     className: "bg-amber-100 text-amber-700"   },
+  { value: "cow_milk",    label: "Cow's Milk",  className: "bg-sky-100 text-sky-700"       },
+  { value: "mixed",       label: "Mixed",       className: "bg-violet-100 text-violet-700" },
+  { value: "other",       label: "Other",       className: "bg-gray-100 text-gray-600"     },
+];
 
 export default function FeedingPage() {
   const [logs, setLogs] = useState<FeedingLog[]>([]);
@@ -22,6 +36,9 @@ export default function FeedingPage() {
   const [form, setForm] = useState({
     milk_consumed_ml: "",
     method: "manual",
+    // Deliberately blank: milk type is required, and pre-selecting a value
+    // would let a mis-typed feed be saved by simply not touching the field.
+    milk_type: "",
     notes: "",
     feed_time: toWire(new Date()),
   });
@@ -73,6 +90,7 @@ export default function FeedingPage() {
         device_id: devices[0]?.id ?? null,
         milk_consumed_ml: form.milk_consumed_ml ? Number(form.milk_consumed_ml) : null,
         method: form.method,
+        milk_type: form.milk_type,
         notes: form.notes || null,
         // Send the user's wall-clock time as-is (no UTC conversion). Server
         // stores everything as naive IST per `now_ist()` convention; converting
@@ -83,6 +101,7 @@ export default function FeedingPage() {
       setForm({
         milk_consumed_ml: "",
         method: "manual",
+        milk_type: "",
         notes: "",
         feed_time: toWire(new Date()),
       });
@@ -253,6 +272,30 @@ export default function FeedingPage() {
                 />
               </div>
               <div>
+                <label htmlFor="milk-type" className="block text-sm font-medium text-gray-700 mb-1">
+                  Milk Type <span className="text-red-500" aria-hidden="true">*</span>
+                </label>
+                <select
+                  id="milk-type"
+                  required
+                  value={form.milk_type}
+                  onChange={(e) => setForm({ ...form, milk_type: e.target.value })}
+                  className={clsx(
+                    "w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none",
+                    // Grey the placeholder so an unfilled required field reads
+                    // as unfilled, not as a chosen value.
+                    form.milk_type ? "border-gray-300 text-gray-900" : "border-gray-300 text-gray-400",
+                  )}
+                >
+                  <option value="" disabled>Select milk type…</option>
+                  {MILK_TYPES.map((t) => (
+                    <option key={t.value} value={t.value} className="text-gray-900">
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Method</label>
                 <select
                   value={form.method}
@@ -319,6 +362,7 @@ export default function FeedingPage() {
                 <tr className="text-xs text-gray-500 uppercase border-b border-gray-100">
                   <th className="px-5 py-3 text-left">Time</th>
                   <th className="px-5 py-3 text-left">Amount</th>
+                  <th className="px-5 py-3 text-left">Milk Type</th>
                   <th className="px-5 py-3 text-left">Method</th>
                   <th className="px-5 py-3 text-left">Notes</th>
                 </tr>
@@ -331,6 +375,9 @@ export default function FeedingPage() {
                     </td>
                     <td className="px-5 py-3 font-medium text-gray-900">
                       {log.milk_consumed_ml != null ? `${log.milk_consumed_ml} ml` : "—"}
+                    </td>
+                    <td className="px-5 py-3">
+                      <MilkTypeBadge milkType={log.milk_type} />
                     </td>
                     <td className="px-5 py-3">
                       <MethodBadge method={log.method} />
@@ -386,6 +433,7 @@ function TableSkeleton() {
         <div key={i} className="flex items-center gap-4 px-5 py-3.5">
           <Skeleton className="h-3.5 w-32" />
           <Skeleton className="h-3.5 w-16" />
+          <Skeleton className="h-3.5 w-24" />
           <Skeleton className="h-3.5 w-20" />
           <Skeleton className="h-3.5 flex-1" />
         </div>
@@ -425,6 +473,20 @@ function EmptyState({ icon: Icon, title, description, actionLabel, onAction, cla
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * Renders "—" rather than a badge when the type is unknown (pre-existing logs,
+ * device-reported feeds), so absent data doesn't masquerade as a recorded value.
+ */
+function MilkTypeBadge({ milkType }: { milkType: MilkType | null }) {
+  const meta = MILK_TYPES.find((t) => t.value === milkType);
+  if (!meta) return <span className="text-gray-400">—</span>;
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${meta.className}`}>
+      {meta.label}
+    </span>
   );
 }
 

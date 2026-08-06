@@ -428,7 +428,8 @@ Request body:
 {
   "weight_before_g": 320.0,
   "weight_after_g": 190.0,
-  "feed_time": "2026-04-25T09:30:00"
+  "feed_time": "2026-04-25T09:30:00",
+  "milk_type": "formula"
 }
 ```
 
@@ -437,6 +438,13 @@ Request body:
 | `weight_before_g` | Yes | Bottle weight before feeding (grams) |
 | `weight_after_g` | Yes | Bottle weight after feeding (grams) |
 | `feed_time` | No | ISO-8601 datetime; defaults to server time if omitted |
+| `milk_type` | No | One of `breast_milk`, `formula`, `cow_milk`, `mixed`, `other` |
+
+**On `milk_type`:** send it only when the device actually knows what the bottle
+held — for example when the feed followed a formula dispense on the same device.
+Omit it otherwise. The field is stored as `null` when omitted and the app shows
+the feed as having no recorded milk type; that is intended. Do **not** send a
+placeholder value, as the app treats this as clinical data for the parent.
 
 Response `201 Created`:
 
@@ -450,6 +458,7 @@ Response `201 Created`:
   "weight_after_g": 190.0,
   "milk_consumed_ml": 126.1,
   "method": "device",
+  "milk_type": "formula",
   "notes": null,
   "created_at": "2026-04-25T09:30:05"
 }

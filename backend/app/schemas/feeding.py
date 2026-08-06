@@ -4,6 +4,7 @@ from typing import List, Optional
 from pydantic import BaseModel, field_validator
 
 VALID_METHODS = {"device", "manual", "breast", "other"}
+VALID_MILK_TYPES = {"breast_milk", "formula", "cow_milk", "mixed", "other"}
 
 
 class FeedingLogCreate(BaseModel):
@@ -13,6 +14,10 @@ class FeedingLogCreate(BaseModel):
     weight_after_g: Optional[float] = None
     milk_consumed_ml: Optional[float] = None
     method: str = "manual"
+    # Required with no default: what the baby was fed is the point of the log,
+    # and defaulting it would quietly attribute every unlabelled feed to one
+    # type. Device-reported feeds go through DeviceFeedReport, which may omit it.
+    milk_type: str
     notes: Optional[str] = None
 
     @field_validator("weight_before_g", "weight_after_g")
@@ -36,6 +41,13 @@ class FeedingLogCreate(BaseModel):
             raise ValueError(f"Method must be one of: {sorted(VALID_METHODS)}")
         return v
 
+    @field_validator("milk_type")
+    @classmethod
+    def validate_milk_type(cls, v: str) -> str:
+        if v not in VALID_MILK_TYPES:
+            raise ValueError(f"Milk type must be one of: {sorted(VALID_MILK_TYPES)}")
+        return v
+
     @field_validator("notes")
     @classmethod
     def validate_notes(cls, v: Optional[str]) -> Optional[str]:
@@ -52,6 +64,9 @@ class FeedingLogOut(BaseModel):
     weight_after_g: Optional[float]
     milk_consumed_ml: Optional[float]
     method: str
+    # Optional on the way out: rows predating this field and device-reported
+    # feeds can legitimately have no milk type.
+    milk_type: Optional[str]
     notes: Optional[str]
     created_at: datetime
 

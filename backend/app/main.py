@@ -221,6 +221,13 @@ except Exception:
     logging.getLogger(__name__).exception("firmware_spec migration failed")
 
 
+# NOTE: `feeding_logs.milk_type` is deliberately NOT migrated here. It is a
+# one-shot schema + backfill applied with `scripts/add_milk_type_column.py`,
+# because the backfill writes clinical data ('breast_milk') to every existing
+# row and that should be a decision someone makes once, not something a process
+# restart can re-attempt. Run that script before deploying this code.
+
+
 def _migrate_password_changed_at() -> None:
     """Idempotent: add `password_changed_at` to users (portable ADD COLUMN)."""
     from sqlalchemy import inspect, text

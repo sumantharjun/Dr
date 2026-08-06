@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -10,7 +10,13 @@ from app.database import get_db
 from app.models.device import Device
 from app.models.feeding import FeedingLog
 from app.models.user import User
-from app.schemas.feeding import FeedingAnalytics, FeedingLogCreate, FeedingLogOut, FeedingSchedule
+from app.schemas.feeding import (
+    VALID_MILK_TYPES,
+    FeedingAnalytics,
+    FeedingLogCreate,
+    FeedingLogOut,
+    FeedingSchedule,
+)
 from app.services.feeding_analyzer import analyze_and_alert
 from app.utils.dependencies import get_current_user, get_device_by_api_key
 from app.utils.timezone import now_ist
@@ -73,6 +79,7 @@ async def create_feeding_log(
         weight_after_g=body.weight_after_g,
         milk_consumed_ml=milk_ml,
         method=body.method,
+        milk_type=body.milk_type,
         notes=body.notes,
     )
     db.add(log)
@@ -88,6 +95,18 @@ class DeviceFeedReport(BaseModel):
     weight_before_g: float
     weight_after_g: float
     feed_time: Optional[datetime] = None
+    # Optional: the scale measures a weight delta and can't tell what's in the
+    # bottle. Firmware that does know (e.g. the feed followed a formula
+    # dispense) should send it; otherwise the log stays untyped rather than
+    # guessing.
+    milk_type: Optional[str] = None
+
+    @field_validator("milk_type")
+    @classmethod
+    def validate_milk_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_MILK_TYPES:
+            raise ValueError(f"Milk type must be one of: {sorted(VALID_MILK_TYPES)}")
+        return v
 
 
 @router.post("/device-report", response_model=FeedingLogOut, status_code=201)
@@ -119,6 +138,7 @@ async def device_feed_report(
         weight_after_g=body.weight_after_g,
         milk_consumed_ml=milk_ml,
         method="device",
+        milk_type=body.milk_type,
     )
     db.add(log)
     db.commit()

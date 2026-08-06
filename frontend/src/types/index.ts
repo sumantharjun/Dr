@@ -23,9 +23,14 @@ export interface FeedingLog {
   weight_after_g: number | null;
   milk_consumed_ml: number | null;
   method: "device" | "manual" | "breast" | "other";
+  // Null for logs predating the field and for device-reported feeds, where the
+  // scale can't know what the bottle held.
+  milk_type: MilkType | null;
   notes: string | null;
   created_at: string;
 }
+
+export type MilkType = "breast_milk" | "formula" | "cow_milk" | "mixed" | "other";
 
 export interface FeedingAnalytics {
   date: string;

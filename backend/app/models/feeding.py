@@ -18,6 +18,14 @@ class FeedingLog(Base):
     method = Column(
         Enum("device", "manual", "breast", "other"), default="manual"
     )
+    # What was actually fed, as distinct from `method` (how it was delivered) —
+    # a bottle feed can hold breast milk or formula, and the two are not
+    # interchangeable clinically. Nullable because the device scale reports a
+    # weight difference without knowing the contents; NULL reads as "unknown"
+    # rather than being silently recorded as breast milk.
+    milk_type = Column(
+        Enum("breast_milk", "formula", "cow_milk", "mixed", "other"), nullable=True
+    )
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=now_ist)
 
