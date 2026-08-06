@@ -23,8 +23,12 @@ export default function ControlsPage() {
   const [device, setDevice] = useState<Device | null>(null);
   const selectedDevice = device?.id ?? null;
   const [selectedMode, setSelectedMode] = useState<string>("");
-  // Which physical action is awaiting confirmation, if any.
-  const [confirming, setConfirming] = useState<null | "wash" | "dispense" | "uv">(null);
+  // Which physical action is awaiting confirmation, if any. Stops are confirmed
+  // as well as starts: cancelling resets the cycle rather than pausing it, so a
+  // mis-tapped Stop costs the whole run.
+  const [confirming, setConfirming] = useState<
+    null | "wash" | "dispense" | "uv" | "stop_wash" | "stop_dispense" | "stop_uv"
+  >(null);
   const [washHistory, setWashHistory] = useState<WashingCycle[]>([]);
   const [dispenseHistory, setDispenseHistory] = useState<DispenseLog[]>([]);
   const [uvHistory, setUvHistory] = useState<UvCycle[]>([]);
@@ -284,6 +288,9 @@ export default function ControlsPage() {
     if (action === "wash") handleStartWash();
     else if (action === "dispense") handleDispense();
     else if (action === "uv") handleUvStart();
+    else if (action === "stop_wash") handleStop("wash");
+    else if (action === "stop_dispense") handleStop("dispense");
+    else if (action === "stop_uv") handleUvCancel();
   }
 
   async function handleStop(type: "wash" | "dispense") {
@@ -355,6 +362,35 @@ export default function ControlsPage() {
       message: "The UV lamp will switch on. Keep the lid closed and hands clear while the cycle runs.",
       confirmLabel: "Start UV",
     },
+    // Stop copy leads with the irreversibility, because that's the part that
+    // isn't obvious: `handleStop` hits the cancel endpoint, which resets the
+    // row — the cycle ends rather than pausing, and there is no resume.
+    stop_wash: {
+      icon: Square,
+      tone: "danger" as const,
+      title: "Stop the wash cycle?",
+      message: `The cycle ends now${
+        washProg ? ` at ${washProg.progress}%` : ""
+      } and cannot be resumed — starting again runs it from the beginning. Bottles may still be soapy or wet.`,
+      confirmLabel: "Stop Wash",
+    },
+    stop_dispense: {
+      icon: Square,
+      tone: "danger" as const,
+      title: "Stop dispensing?",
+      message: `Dispensing stops immediately${
+        dispenseProg ? ` at ${dispenseProg.progress}%` : ""
+      } and cannot be resumed. The bottle may be left part-filled.`,
+      confirmLabel: "Stop Dispense",
+    },
+    stop_uv: {
+      icon: Square,
+      tone: "danger" as const,
+      title: "Stop UV sterilization?",
+      message:
+        "The UV lamp switches off and the cycle ends. Contents will not be fully sterilized and the cycle must be restarted from scratch.",
+      confirmLabel: "Stop UV",
+    },
   };
   const activeConfirm = confirming ? CONFIRMATIONS[confirming] : null;
 
@@ -418,7 +454,7 @@ export default function ControlsPage() {
               </span>
               {washIsActive && (
                 <button
-                  onClick={() => handleStop("wash")}
+                  onClick={() => setConfirming("stop_wash")}
                   disabled={stopLoading === "wash"}
                   title="Stop wash cycle"
                   className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 border border-red-200 hover:border-red-400 rounded-lg px-2 py-1 disabled:opacity-50 transition-colors"
@@ -473,7 +509,7 @@ export default function ControlsPage() {
               </span>
               {dispenseIsActive && (
                 <button
-                  onClick={() => handleStop("dispense")}
+                  onClick={() => setConfirming("stop_dispense")}
                   disabled={stopLoading === "dispense"}
                   title="Stop dispensing"
                   className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 border border-red-200 hover:border-red-400 rounded-lg px-2 py-1 disabled:opacity-50 transition-colors"
@@ -515,7 +551,7 @@ export default function ControlsPage() {
           </p>
           {uvProg.status === "started" && (
             <button
-              onClick={handleUvCancel}
+              onClick={() => setConfirming("stop_uv")}
               disabled={uvStopLoading}
               title="Stop UV sterilization"
               className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 border border-red-200 hover:border-red-400 rounded-lg px-2 py-1 disabled:opacity-50 transition-colors"

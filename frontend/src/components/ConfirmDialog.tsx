@@ -61,13 +61,17 @@ export default function ConfirmDialog({
         <p className="text-sm text-gray-500 mt-1 mb-5">{message}</p>
         <div className="flex gap-3">
           <button
+            // For destructive prompts the safe button takes focus, so a stray
+            // Enter dismisses rather than confirms. Focus stays inside the
+            // dialog either way, so keyboard users aren't stranded.
+            autoFocus={tone === "danger"}
             onClick={onCancel}
             className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
-            autoFocus
+            autoFocus={tone !== "danger"}
             onClick={onConfirm}
             className={clsx("flex-1 px-4 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors", t.confirm)}
           >
