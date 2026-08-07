@@ -1,4 +1,4 @@
-from typing import List, Literal
+from typing import Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.order import Order, OrderItem, Product
 from app.models.user import User
 from app.schemas.order import OrderCreate, OrderOut, ProductOut
+from app.services import exchange_rates
 from app.utils.dependencies import get_current_user
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -17,9 +18,29 @@ class OrderStatusUpdate(BaseModel):
     status: Literal["cancelled"]
 
 
+class ExchangeRatesOut(BaseModel):
+    base: str
+    rates: Dict[str, float]
+    fetched_at: Optional[float]
+    stale: bool
+
+
 @router.get("/products", response_model=List[ProductOut])
 def list_products(db: Session = Depends(get_db)):
     return db.query(Product).filter(Product.stock > 0).all()
+
+
+@router.get("/rates", response_model=ExchangeRatesOut)
+def get_exchange_rates():
+    """
+    INR→{USD,EUR,GBP} rates for the shop's currency selector.
+
+    Display only: orders are priced and charged in INR regardless of the
+    currency the user is viewing. Unauthenticated — these are public reference
+    figures and the shop's product list is public too. `stale: true` means the
+    upstream refresh failed and the numbers are cached or fallback values.
+    """
+    return exchange_rates.get_rates()
 
 
 @router.post("/", response_model=OrderOut, status_code=201)

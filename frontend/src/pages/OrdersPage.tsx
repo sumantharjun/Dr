@@ -1,11 +1,12 @@
 import { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
-import { ShoppingBag, Plus, Minus, ShoppingCart, Package, XCircle, CheckCircle2, Truck, Clock, Search, X } from "lucide-react";
+import { ShoppingBag, Plus, Minus, ShoppingCart, Package, XCircle, CheckCircle2, Truck, Clock, Search, X, Info } from "lucide-react";
 import { clsx } from "clsx";
 import api from "../services/api";
 import { Order, Product } from "../types";
 import { CardSkeleton } from "../components/Skeleton";
 import { format, formatDistanceToNow } from "date-fns";
+import { CURRENCIES, Currency, formatMoney, useCurrencyStore } from "../store/currencyStore";
 
 const STATUS_STEPS: Order["status"][] = ["pending", "confirmed", "shipped", "delivered"];
 
@@ -23,12 +24,24 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const currency = useCurrencyStore((s) => s.currency);
+  const rates = useCurrencyStore((s) => s.rates);
+  const ratesStale = useCurrencyStore((s) => s.stale);
+  const setCurrency = useCurrencyStore((s) => s.setCurrency);
+  const loadRates = useCurrencyStore((s) => s.loadRates);
+
+  /** Every price in this page is stored in INR; this converts for display only. */
+  const money = (inr: number) => formatMoney(inr, currency, rates);
+
   useEffect(() => {
     Promise.all([
       api.get("/orders/products").then((r) => setProducts(r.data)),
       api.get("/orders/").then((r) => setOrders(r.data)),
     ]).finally(() => setLoading(false));
-  }, []);
+    // Fired separately: rates are display sugar and shouldn't hold up the
+    // product list if the provider is slow.
+    loadRates();
+  }, [loadRates]);
 
   // Auto-refresh orders every 30 s when on the orders tab and there are active orders
   useEffect(() => {
@@ -124,12 +137,28 @@ export default function OrdersPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between gap-3 mb-6">
+      {/* Wraps below sm: the currency select plus both tabs overflow a phone
+          width otherwise. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
           <p className="text-gray-500 text-sm mt-1">Shop for cleaning supplies and accessories</p>
         </div>
-        <div className="flex gap-2 flex-shrink-0">
+        <div className="flex gap-2 flex-shrink-0 items-center">
+          <label className="sr-only" htmlFor="currency-select">Display currency</label>
+          <select
+            id="currency-select"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value as Currency)}
+            title="Change display currency — orders are still charged in INR"
+            className="px-2.5 py-2 text-sm rounded-lg font-medium bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer"
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.symbol} {c.code}
+              </option>
+            ))}
+          </select>
           <button
             onClick={() => setTab("shop")}
             className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors whitespace-nowrap ${
@@ -152,6 +181,21 @@ export default function OrdersPage() {
           </button>
         </div>
       </div>
+
+      {/* Shown whenever prices aren't in their stored currency. Users are
+          committing money here, so the fact that the figures are converted —
+          and that the charge is still in rupees — has to be on the page, not
+          only in a tooltip. */}
+      {currency !== "INR" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-800 flex items-start gap-2">
+          <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            Prices are shown in <strong>{currency}</strong> as an approximate conversion.
+            Orders are placed and charged in Indian Rupees (₹).
+            {ratesStale && " Live rates are currently unavailable, so these figures may be out of date."}
+          </span>
+        </div>
+      )}
 
       {successMsg && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-green-700 text-sm font-medium flex items-center gap-2">
@@ -232,7 +276,7 @@ export default function OrdersPage() {
                     <p className="text-xs text-gray-500 mb-2 line-clamp-2">{p.description}</p>
                   )}
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-primary-700">₹{p.price.toFixed(2)}</span>
+                    <span className="font-bold text-primary-700">{money(p.price)}</span>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => updateCart(p.id, -1)}
@@ -265,6 +309,7 @@ export default function OrdersPage() {
               cartTotal={cartTotal}
               placing={placing}
               onPlaceOrder={handlePlaceOrder}
+              money={money}
             />
           </div>
         </div>
@@ -281,7 +326,7 @@ export default function OrdersPage() {
               <p className="text-sm font-semibold text-gray-900 leading-tight">
                 {cartCount} {cartCount === 1 ? "item" : "items"}
               </p>
-              <p className="text-xs text-gray-500 leading-tight">₹{cartTotal.toFixed(2)}</p>
+              <p className="text-xs text-gray-500 leading-tight">{money(cartTotal)}</p>
             </div>
             <button
               onClick={() => setCartSheetOpen(true)}
@@ -324,6 +369,7 @@ export default function OrdersPage() {
                     cartTotal={cartTotal}
                     placing={placing}
                     onPlaceOrder={handlePlaceOrder}
+                    money={money}
                     hideHeading
                   />
                 </div>
@@ -358,7 +404,7 @@ export default function OrdersPage() {
                       <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${orderStatusBadge(order.status)}`}>
                         {order.status}
                       </span>
-                      <span className="font-bold text-primary-700">₹{order.total_price.toFixed(2)}</span>
+                      <span className="font-bold text-primary-700">{money(order.total_price)}</span>
                     </div>
                   </div>
 
@@ -372,7 +418,7 @@ export default function OrdersPage() {
                     {order.items.map((item) => (
                       <li key={item.id} className="text-sm text-gray-600 flex justify-between">
                         <span>{item.product.name} ×{item.quantity}</span>
-                        <span>₹{(item.unit_price * item.quantity).toFixed(2)}</span>
+                        <span>{money(item.unit_price * item.quantity)}</span>
                       </li>
                     ))}
                   </ul>
@@ -455,7 +501,7 @@ function OrderProgressBar({ status }: { status: Order["status"] }) {
  * The sheet supplies its own header with a close button, hence `hideHeading`.
  */
 function CartPanel({
-  cart, products, cartCount, cartTotal, placing, onPlaceOrder, hideHeading,
+  cart, products, cartCount, cartTotal, placing, onPlaceOrder, hideHeading, money,
 }: {
   cart: Record<number, number>;
   products: Product[];
@@ -464,6 +510,8 @@ function CartPanel({
   placing: boolean;
   onPlaceOrder: () => void;
   hideHeading?: boolean;
+  /** Formats an INR amount in the user's selected display currency. */
+  money: (inr: number) => string;
 }) {
   return (
     <>
@@ -485,7 +533,7 @@ function CartPanel({
                 <li key={id} className="flex justify-between text-sm">
                   <span className="text-gray-700 flex-1 pr-2 truncate">{p.name}</span>
                   <span className="text-gray-500 flex-shrink-0">
-                    ×{qty} · ₹{(p.price * qty).toFixed(2)}
+                    ×{qty} · {money(p.price * qty)}
                   </span>
                 </li>
               );
@@ -493,7 +541,7 @@ function CartPanel({
           </ul>
           <div className="border-t border-gray-100 pt-3 mb-4 flex justify-between font-semibold text-gray-900">
             <span>Total</span>
-            <span>₹{cartTotal.toFixed(2)}</span>
+            <span>{money(cartTotal)}</span>
           </div>
           <button
             onClick={onPlaceOrder}

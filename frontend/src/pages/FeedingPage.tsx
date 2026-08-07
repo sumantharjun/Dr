@@ -283,8 +283,11 @@ export default function FeedingPage() {
                   className={clsx(
                     "w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none",
                     // Grey the placeholder so an unfilled required field reads
-                    // as unfilled, not as a chosen value.
-                    form.milk_type ? "border-gray-300 text-gray-900" : "border-gray-300 text-gray-400",
+                    // as unfilled, not as a chosen value. gray-500 rather than
+                    // gray-400: this is the control's actual selected text, not
+                    // a true ::placeholder, so it needs to clear 4.5:1 (gray-400
+                    // measures 2.54:1 on white).
+                    form.milk_type ? "border-gray-300 text-gray-900" : "border-gray-300 text-gray-500",
                   )}
                 >
                   <option value="" disabled>Select milk type…</option>
