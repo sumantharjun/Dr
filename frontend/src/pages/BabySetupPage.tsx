@@ -22,6 +22,12 @@ export default function BabySetupPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    // Trimmed, so a name of only spaces is rejected the same way the API does.
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Please enter your baby's name.");
+      return;
+    }
     if (!gender) {
       setError("Please select a gender so we can set up the theme.");
       return;
@@ -47,7 +53,7 @@ export default function BabySetupPage() {
     setSaving(true);
     try {
       const { data } = await api.post("/baby/", {
-        name: name.trim() || null,
+        name: trimmedName,
         gender,
         date_of_birth: dob,
         weight_kg: w,
@@ -163,19 +169,24 @@ export default function BabySetupPage() {
             </p>
           </div>
 
-          {/* Name (optional) */}
+          {/* Name (required) */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Baby's name <span className="text-gray-400 text-xs">(optional)</span>
+            <label htmlFor="baby-name" className="block text-sm font-medium text-gray-700 mb-1">
+              Baby's name <span className="text-red-500">*</span>
             </label>
             <input
+              id="baby-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              required
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
               placeholder="e.g. Aarav"
               maxLength={255}
             />
+            <p className="text-xs text-gray-400 mt-1">
+              Used to personalise greetings and reminders across the app.
+            </p>
           </div>
 
           <button

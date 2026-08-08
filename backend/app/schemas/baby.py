@@ -23,8 +23,19 @@ def _validate_dob(v: date) -> date:
     return v
 
 
+def _validate_name(v: str) -> str:
+    """Trim and require a real name. Whitespace-only is treated as blank, so
+    a space can't be used to slip past the requirement."""
+    cleaned = (v or "").strip()
+    if not cleaned:
+        raise ValueError("name cannot be empty")
+    if len(cleaned) > 255:
+        raise ValueError("name must be 255 characters or fewer")
+    return cleaned
+
+
 class BabyCreate(BaseModel):
-    name: Optional[str] = None
+    name: str
     gender: str
     # Required on create: age drives feeding volume and interval guidance, and
     # defaulting it would produce confidently wrong recommendations.
@@ -60,13 +71,13 @@ class BabyCreate(BaseModel):
 
     @field_validator("name")
     @classmethod
-    def validate_name(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and len(v) > 255:
-            raise ValueError("name must be 255 characters or fewer")
-        return v
+    def validate_name(cls, v: str) -> str:
+        return _validate_name(v)
 
 
 class BabyUpdate(BaseModel):
+    # Optional in the sense of "omit to leave unchanged" — but a name that IS
+    # sent must be a real one. There is no way to blank an existing name.
     name: Optional[str] = None
     gender: Optional[str] = None
     # Optional here so an existing profile created before this field existed can
@@ -74,6 +85,11 @@ class BabyUpdate(BaseModel):
     date_of_birth: Optional[date] = None
     weight_kg: Optional[float] = None
     theme_color: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else _validate_name(v)
 
     @field_validator("date_of_birth")
     @classmethod
@@ -104,7 +120,7 @@ class BabyUpdate(BaseModel):
 
 class BabyOut(BaseModel):
     id: int
-    name: Optional[str]
+    name: str
     gender: str
     # Nullable on the way out: profiles predating this field have no DOB.
     date_of_birth: Optional[date]

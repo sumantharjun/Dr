@@ -85,6 +85,8 @@ export default function DashboardPage() {
             Good {getGreeting()}, {user?.full_name?.split(" ")[0]}
           </h1>
           <p className="text-gray-500 text-sm mt-1">
+            {/* The name is guaranteed once the profile loads; the fallback only
+                covers the brief window before babyStore is populated. */}
             {baby?.name
               ? `Here's what's happening with ${baby.name}.`
               : "Here's what's happening with your baby's feeding."}

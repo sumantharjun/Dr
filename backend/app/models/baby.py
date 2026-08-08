@@ -13,7 +13,11 @@ class Baby(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
-    name = Column(String(255), nullable=True)
+    # Required: the app greets and labels by name throughout, and a blank one
+    # degrades every one of those into generic copy. Rows predating this rule
+    # were backfilled to 'Baby' by scripts/backfill_baby_name.py, which also
+    # applied the NOT NULL constraint.
+    name = Column(String(255), nullable=False)
     gender = Column(Enum("male", "female"), nullable=False)
     # Required for new profiles (see schemas/baby.py) but nullable in the
     # column: profiles created before this field existed have no date of birth

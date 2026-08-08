@@ -44,6 +44,11 @@ export default function SettingsPage() {
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      addToast("Baby's name is required", "error");
+      return;
+    }
     const w = Number(weight);
     if (!w || w < 0.5 || w > 30) {
       addToast("Weight must be between 0.5 and 30 kg", "error");
@@ -56,7 +61,7 @@ export default function SettingsPage() {
     setSaving(true);
     try {
       const { data } = await api.patch("/baby/", {
-        name: name.trim() || null,
+        name: trimmedName,
         gender,
         // Omitted when blank: PATCH treats null as "leave unchanged", and there
         // is no way to clear a DOB back to unknown once set.
@@ -137,13 +142,15 @@ export default function SettingsPage() {
             <Mascot variant="auto" size={120} className="flex-shrink-0" />
             <div className="flex-1 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name <span className="text-gray-400 text-xs">(optional)</span>
+                <label htmlFor="settings-name" className="block text-sm font-medium text-gray-700 mb-1">
+                  Name <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="settings-name"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  required
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
                   maxLength={255}
                 />

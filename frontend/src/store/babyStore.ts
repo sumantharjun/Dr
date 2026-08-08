@@ -2,7 +2,8 @@ import { create } from "zustand";
 
 export interface Baby {
   id: number;
-  name: string | null;
+  /** Always present — required on create, and legacy blanks were backfilled to "Baby". */
+  name: string;
   gender: "male" | "female";
   /** ISO date (YYYY-MM-DD). Null for profiles created before this field existed. */
   date_of_birth: string | null;
