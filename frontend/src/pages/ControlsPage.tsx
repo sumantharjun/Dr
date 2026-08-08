@@ -609,9 +609,16 @@ export default function ControlsPage() {
             onClick={() => setConfirming("uv")}
             disabled={!selectedDevice || uvLoading || uvProg?.status === "started"}
             title="Send a UV sterilization start command to the device"
-            className="w-full mt-2 flex items-center justify-center gap-2 border border-purple-300 text-purple-700 hover:bg-purple-50 disabled:opacity-50 py-2.5 rounded-lg text-sm font-medium transition-colors"
+            // Same theme palette as every other action button. Outlined rather
+            // than filled so "Start Wash Cycle" above stays the card's primary
+            // action — the difference now reads as hierarchy, not as an
+            // unexplained second brand colour. Dark variants because
+            // primary-700 on the dark surface falls under 4.5:1.
+            className="w-full mt-2 flex items-center justify-center gap-2 border border-primary-300 dark:border-primary-500/50 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-500/10 disabled:opacity-50 py-2.5 rounded-lg text-sm font-medium transition-colors"
           >
-            <Sparkles className="w-4 h-4" />
+            {/* The one remaining UV cue: purple stays on the icon only, so UV
+                is still identifiable without owning the whole button. */}
+            <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
             {uvLoading ? "Starting UV…" : uvProg?.status === "started" ? "UV running…" : "Start UV Sterilization"}
           </button>
         </div>
