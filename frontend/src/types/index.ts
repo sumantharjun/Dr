@@ -124,6 +124,10 @@ export interface Baby {
   id: number;
   name: string | null;
   gender: "male" | "female";
+  /** ISO date (YYYY-MM-DD). Null for profiles created before this field existed. */
+  date_of_birth: string | null;
+  /** Age in whole days, derived server-side from date_of_birth. */
+  age_days: number | null;
   weight_kg: number;
   theme_color: "blue" | "pink";
   created_at: string;

@@ -3,21 +3,40 @@ import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Mascot from "../components/Mascot";
 import { useBabyStore } from "../store/babyStore";
+import { ageDaysFromISO, describeAge, earliestDobISO, todayISO } from "../services/age";
 
 export default function BabySetupPage() {
   const [gender, setGender] = useState<"male" | "female" | "">("");
   const [name, setName] = useState("");
+  const [dob, setDob] = useState("");
   const [weight, setWeight] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const { setBaby } = useBabyStore();
   const navigate = useNavigate();
 
+  // Live echo of the age as the parent picks a date — confirms they entered
+  // what they meant before they commit to it.
+  const age = describeAge(ageDaysFromISO(dob));
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     if (!gender) {
       setError("Please select a gender so we can set up the theme.");
+      return;
+    }
+    if (!dob) {
+      setError("Please enter your baby's date of birth.");
+      return;
+    }
+    // Mirror the server's bounds so a bad date is caught before the round trip.
+    if (dob > todayISO()) {
+      setError("Date of birth can't be in the future.");
+      return;
+    }
+    if (dob < earliestDobISO()) {
+      setError("Please check the date of birth — that's more than 10 years ago.");
       return;
     }
     const w = Number(weight);
@@ -30,6 +49,7 @@ export default function BabySetupPage() {
       const { data } = await api.post("/baby/", {
         name: name.trim() || null,
         gender,
+        date_of_birth: dob,
         weight_kg: w,
       });
       setBaby(data);
@@ -100,6 +120,26 @@ export default function BabySetupPage() {
                 <span className="text-xs text-gray-500">Pink theme</span>
               </button>
             </div>
+          </div>
+
+          {/* Date of birth (required) */}
+          <div>
+            <label htmlFor="dob" className="block text-sm font-medium text-gray-700 mb-1">
+              Date of birth <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="dob"
+              type="date"
+              value={dob}
+              onChange={(e) => setDob(e.target.value)}
+              required
+              max={todayISO()}
+              min={earliestDobISO()}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              {age ? `${age}.` : "Used for age-appropriate feeding volume and interval guidance."}
+            </p>
           </div>
 
           {/* Weight (required) */}

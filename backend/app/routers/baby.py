@@ -41,6 +41,7 @@ def create_baby(
         user_id=current_user.id,
         name=body.name,
         gender=body.gender,
+        date_of_birth=body.date_of_birth,
         weight_kg=body.weight_kg,
         theme_color=body.theme_color or _default_theme_for_gender(body.gender),
     )
@@ -63,6 +64,8 @@ def update_baby(
         baby.name = body.name
     if body.gender is not None:
         baby.gender = body.gender
+    if body.date_of_birth is not None:
+        baby.date_of_birth = body.date_of_birth
     if body.weight_kg is not None:
         baby.weight_kg = body.weight_kg
     if body.theme_color is not None:

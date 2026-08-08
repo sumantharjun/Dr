@@ -1,4 +1,6 @@
-from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String
+from typing import Optional
+
+from sqlalchemy import Column, Date, DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -13,6 +15,10 @@ class Baby(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
     name = Column(String(255), nullable=True)
     gender = Column(Enum("male", "female"), nullable=False)
+    # Required for new profiles (see schemas/baby.py) but nullable in the
+    # column: profiles created before this field existed have no date of birth
+    # and one cannot be inferred. Those parents are prompted in Settings.
+    date_of_birth = Column(Date, nullable=True)
     weight_kg = Column(Float, nullable=False)
     # User-selectable theme; defaults to gender-derived value on creation.
     theme_color = Column(Enum("blue", "pink"), nullable=False, default="blue")
@@ -20,3 +26,16 @@ class Baby(Base):
     updated_at = Column(DateTime, default=now_ist, onupdate=now_ist)
 
     user = relationship("User", backref="baby")
+
+    @property
+    def age_days(self) -> Optional[int]:
+        """
+        Age in whole days, or None if no date of birth is recorded.
+
+        Derived here rather than in the client so age-based feeding guidance and
+        the UI can never disagree about how old the baby is. Serialised onto
+        BabyOut via `from_attributes`.
+        """
+        if not self.date_of_birth:
+            return None
+        return (now_ist().date() - self.date_of_birth).days

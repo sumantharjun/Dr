@@ -5,6 +5,7 @@ import api from "../services/api";
 import Mascot from "../components/Mascot";
 import { useBabyStore } from "../store/babyStore";
 import { useToastStore } from "../store/toastStore";
+import { ageDaysFromISO, describeAge, earliestDobISO, todayISO } from "../services/age";
 import type { Device } from "../types";
 
 export default function SettingsPage() {
@@ -13,10 +14,13 @@ export default function SettingsPage() {
 
   const [name, setName] = useState(baby?.name ?? "");
   const [gender, setGender] = useState<"male" | "female">(baby?.gender ?? "male");
+  const [dob, setDob] = useState(baby?.date_of_birth ?? "");
   const [weight, setWeight] = useState(baby ? String(baby.weight_kg) : "");
   const [theme, setThemeLocal] = useState<"blue" | "pink">(baby?.theme_color ?? "blue");
   const [saving, setSaving] = useState(false);
   const [device, setDevice] = useState<Device | null>(null);
+
+  const age = describeAge(ageDaysFromISO(dob));
 
   useEffect(() => {
     api
@@ -45,11 +49,18 @@ export default function SettingsPage() {
       addToast("Weight must be between 0.5 and 30 kg", "error");
       return;
     }
+    if (dob && (dob > todayISO() || dob < earliestDobISO())) {
+      addToast("Please check the date of birth", "error");
+      return;
+    }
     setSaving(true);
     try {
       const { data } = await api.patch("/baby/", {
         name: name.trim() || null,
         gender,
+        // Omitted when blank: PATCH treats null as "leave unchanged", and there
+        // is no way to clear a DOB back to unknown once set.
+        ...(dob ? { date_of_birth: dob } : {}),
         weight_kg: w,
         theme_color: theme,
       });
@@ -136,6 +147,30 @@ export default function SettingsPage() {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
                   maxLength={255}
                 />
+              </div>
+
+              <div>
+                <label htmlFor="settings-dob" className="block text-sm font-medium text-gray-700 mb-1">
+                  Date of birth
+                </label>
+                <input
+                  id="settings-dob"
+                  type="date"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  max={todayISO()}
+                  min={earliestDobISO()}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                />
+                {age ? (
+                  <p className="text-xs text-gray-400 mt-1">{age}.</p>
+                ) : (
+                  // Profiles created before this field existed land here. Say
+                  // what it unlocks rather than just flagging it as empty.
+                  <p className="text-xs text-amber-600 mt-1">
+                    Add a date of birth to enable age-based feeding volume and interval guidance.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
