@@ -12,6 +12,10 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [loading, setLoading] = useState(false);
+  // Defaults to on: parents open this several times a day, and the whole point
+  // of the change is that they stop meeting the login screen. Unticking it is
+  // the deliberate act, for a shared or borrowed device.
+  const [rememberMe, setRememberMe] = useState(true);
   const { setAuth } = useAuthStore();
   const navigate = useNavigate();
 
@@ -32,8 +36,12 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const { data } = await api.post("/auth/login", { email, password });
-      setAuth(data.user, data.access_token);
+      const { data } = await api.post("/auth/login", {
+        email,
+        password,
+        remember_me: rememberMe,
+      });
+      setAuth(data.user, data.access_token, rememberMe);
       navigate("/dashboard");
     } catch (err: any) {
       const status = err.response?.status;
@@ -113,7 +121,22 @@ export default function LoginPage() {
               </button>
             </div>
             {fieldErrors.password && <p className="text-xs text-red-600 mt-1">{fieldErrors.password}</p>}
-            <div className="text-right mt-1">
+            {/* Paired on one row with the reset link: both answer "what happens
+                after I sign in", and it keeps the form compact on a phone. */}
+            <div className="flex items-center justify-between mt-2.5">
+              <label
+                htmlFor="remember-me"
+                className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none"
+              >
+                <input
+                  id="remember-me"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-2 focus:ring-primary-500 cursor-pointer"
+                />
+                Keep me signed in
+              </label>
               <Link to="/forgot-password" className="text-xs text-primary-600 font-medium hover:underline">
                 Forgot password?
               </Link>

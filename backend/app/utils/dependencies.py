@@ -1,16 +1,28 @@
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.utils.security import decode_token, hash_api_key, password_marker
+from app.utils.security import (
+    REMEMBER_CLAIM,
+    decode_token,
+    hash_api_key,
+    password_marker,
+    renew_if_stale,
+)
 
 bearer_scheme = HTTPBearer()
 
+# Response header carrying a slid-forward session token. Must also be listed in
+# the CORS middleware's expose_headers, or the browser will withhold it from
+# JavaScript on cross-origin calls and sessions will silently never renew.
+RENEWED_TOKEN_HEADER = "X-Renewed-Token"
+
 
 def get_current_user(
+    response: Response,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -30,7 +42,26 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Session expired — please sign in again.",
         )
+    # Slide the session forward. Only reached once the token is fully valid, so
+    # an expired or password-invalidated token can never renew itself.
+    renewed = renew_if_stale(payload)
+    if renewed:
+        response.headers[RENEWED_TOKEN_HEADER] = renewed
     return user
+
+
+def get_session_is_remembered(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+) -> bool:
+    """
+    Whether the caller's session was opened with "Remember me".
+
+    Used when re-issuing a token mid-session (e.g. after a password change) so
+    the replacement keeps the same lifetime the user originally chose, instead
+    of silently downgrading a 30-day session to a 12-hour one.
+    """
+    payload = decode_token(credentials.credentials) or {}
+    return bool(payload.get(REMEMBER_CLAIM))
 
 
 def get_device_by_api_key(

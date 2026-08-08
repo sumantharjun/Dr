@@ -17,14 +17,16 @@ from app.schemas.user import (
     UserLogin,
     UserOut,
 )
-from app.utils.dependencies import get_current_user
+from app.utils.dependencies import get_current_user, get_session_is_remembered
 from app.utils.email import send_password_reset_email
 from app.utils.rate_limiter import login_limiter, register_limiter, reset_limiter
 from app.utils.security import (
+    REMEMBER_CLAIM,
     create_access_token,
     hash_password,
     hash_token,
     password_marker,
+    session_lifetime,
     verify_password,
 )
 from app.utils.timezone import now_ist
@@ -50,7 +52,17 @@ def register(body: UserCreate, request: Request, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    token = create_access_token({"sub": str(user.id), "pwd_at": password_marker(user.password_changed_at)})
+    # A just-registered user is treated as a remembered session: they've only
+    # this second chosen a password, and dropping them at the login screen when
+    # they close the tab would be a poor first impression.
+    token = create_access_token(
+        {
+            "sub": str(user.id),
+            "pwd_at": password_marker(user.password_changed_at),
+            REMEMBER_CLAIM: True,
+        },
+        expires_delta=session_lifetime(True),
+    )
     return Token(access_token=token, user=UserOut.model_validate(user))
 
 
@@ -65,7 +77,14 @@ def login(body: UserLogin, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email).first()
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = create_access_token({"sub": str(user.id), "pwd_at": password_marker(user.password_changed_at)})
+    token = create_access_token(
+        {
+            "sub": str(user.id),
+            "pwd_at": password_marker(user.password_changed_at),
+            REMEMBER_CLAIM: body.remember_me,
+        },
+        expires_delta=session_lifetime(body.remember_me),
+    )
     return Token(access_token=token, user=UserOut.model_validate(user))
 
 
@@ -78,6 +97,7 @@ def me(current_user: User = Depends(get_current_user)):
 def change_password(
     body: ChangePassword,
     current_user: User = Depends(get_current_user),
+    remembered: bool = Depends(get_session_is_remembered),
     db: Session = Depends(get_db),
 ):
     """Change the logged-in user's password after verifying the current one."""
@@ -94,8 +114,15 @@ def change_password(
     # Bumping password_changed_at invalidates all prior tokens (incl. the one
     # used for this request). Return a fresh token so the CURRENT session keeps
     # working while any other/old sessions are logged out.
+    # Keep the lifetime the user originally chose — a password change shouldn't
+    # quietly demote a remembered session to a short one.
     token = create_access_token(
-        {"sub": str(current_user.id), "pwd_at": password_marker(current_user.password_changed_at)}
+        {
+            "sub": str(current_user.id),
+            "pwd_at": password_marker(current_user.password_changed_at),
+            REMEMBER_CLAIM: remembered,
+        },
+        expires_delta=session_lifetime(remembered),
     )
     return {"status": "password_changed", "access_token": token}
 

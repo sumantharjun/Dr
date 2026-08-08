@@ -1,12 +1,11 @@
 import hashlib
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from app.config import settings
-from app.utils.timezone import now_ist
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -45,11 +44,66 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    expire = now_ist() + (
+    # `exp` must be UTC: RFC 7519 defines it as seconds since the UTC epoch, and
+    # jose validates it against a real UTC clock on decode. Building it from
+    # now_ist() — a NAIVE IST datetime — made jose read IST wall-clock as UTC,
+    # so every token silently outlived its configured lifetime by the 5h30m IST
+    # offset (a "60 minute" session really lasted ~6.5 hours).
+    expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode["exp"] = expire
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+# ── Sliding sessions ────────────────────────────────────────────────────────
+# "Remember me" is carried in the token itself (the `rmb` claim) rather than
+# looked up per request, so a renewal knows which lifetime to re-issue with
+# without touching the database.
+REMEMBER_CLAIM = "rmb"
+
+
+def session_lifetime(remember: bool) -> timedelta:
+    minutes = (
+        settings.REMEMBER_ME_EXPIRE_MINUTES
+        if remember
+        else settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+    return timedelta(minutes=minutes)
+
+
+def _now_as_encoded_timestamp() -> int:
+    """'Now' on the same UTC-epoch scale the `exp` claim is stored on."""
+    return int(datetime.now(timezone.utc).timestamp())
+
+
+def renew_if_stale(payload: dict) -> Optional[str]:
+    """
+    Return a freshly-issued token if this one is past the halfway point of its
+    lifetime, else None.
+
+    Halfway (rather than "nearly expired") means a user who opens the app once
+    a fortnight still keeps a 30-day session alive, while a token is renewed at
+    most a handful of times over its life instead of on every request.
+    """
+    exp = payload.get("exp")
+    if not exp:
+        return None
+
+    remember = bool(payload.get(REMEMBER_CLAIM))
+    lifetime = session_lifetime(remember)
+    remaining = int(exp) - _now_as_encoded_timestamp()
+    if remaining > lifetime.total_seconds() / 2:
+        return None
+
+    return create_access_token(
+        {
+            "sub": payload["sub"],
+            "pwd_at": payload.get("pwd_at", ""),
+            REMEMBER_CLAIM: remember,
+        },
+        expires_delta=lifetime,
+    )
 
 
 def decode_token(token: str) -> Optional[dict]:

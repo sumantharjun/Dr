@@ -8,7 +8,17 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "mysql+pymysql://appuser:apppassword@localhost:3306/baby_feeding"
     SECRET_KEY: str = _WEAK_DEFAULT
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    # ── Session lifetimes ───────────────────────────────────────────────────
+    # Both are SLIDING: any authenticated request made past the halfway point
+    # of a token's life gets a freshly-issued token back in the X-Renewed-Token
+    # response header (see utils/dependencies.py). An active user therefore
+    # never hits the expiry at all — only real inactivity ends a session.
+    #
+    # Without "Remember me": long enough to cover a day's use, but the token
+    # lives in sessionStorage so closing the browser signs the user out.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 720  # 12 hours
+    # With "Remember me": persists in localStorage across browser restarts.
+    REMEMBER_ME_EXPIRE_MINUTES: int = 60 * 24 * 30  # 30 days
     # Comma-separated list of allowed CORS origins
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import api from "../services/api";
+import { getToken } from "../services/tokenStorage";
 import { useAlertStore } from "../store/alertStore";
 import { useToastStore } from "../store/toastStore";
 import { useWsEventStore } from "../store/wsEventStore";
@@ -104,7 +105,7 @@ export function useGlobalSocket(deviceIds: number[]) {
   // Always-current connect function via ref so onclose callbacks never go stale
   const connectRef = useRef((_deviceId: number) => {});
   connectRef.current = (deviceId: number) => {
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
     if (!token || !isMountedRef.current) return;
 
     const url = `${WS_BASE}/devices/ws/${deviceId}?token=${encodeURIComponent(token)}`;

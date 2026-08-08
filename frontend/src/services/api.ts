@@ -1,7 +1,14 @@
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
+import { clearSession, getToken, updateToken } from "./tokenStorage";
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 300;
+
+// Sliding sessions: the API returns a freshly-issued token in this header once
+// the current one is past half its life. Swapping it in keeps an active user
+// signed in indefinitely. Requires expose_headers on the API's CORS middleware,
+// or the browser hides it from JS cross-origin. Axios lowercases header keys.
+const RENEWED_TOKEN_HEADER = "x-renewed-token";
 
 declare module "axios" {
   interface AxiosRequestConfig {
@@ -14,7 +21,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("access_token");
+  const token = getToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -22,12 +29,21 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    const renewed = res.headers?.[RENEWED_TOKEN_HEADER];
+    if (typeof renewed === "string" && renewed) {
+      updateToken(renewed);
+    }
+    return res;
+  },
   async (err: AxiosError) => {
     const config = err.config as AxiosRequestConfig & { _retryCount?: number };
 
     if (err.response?.status === 401) {
-      localStorage.removeItem("access_token");
+      // Clear both stores, not just localStorage — otherwise a non-remembered
+      // session would leave a dead token in sessionStorage and every later
+      // request would keep 401ing.
+      clearSession();
       window.location.href = "/login";
       return Promise.reject(err);
     }

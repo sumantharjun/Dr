@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
+import { getToken } from "../services/tokenStorage";
 
 type MessageHandler = (event: Record<string, unknown>) => void;
 
@@ -21,7 +22,7 @@ export function useDeviceSocket(deviceId: number | null, onMessage: MessageHandl
   const connect = useCallback(() => {
     if (!deviceId) return;
 
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
     if (!token) return; // No token — do not attempt WebSocket connection
 
     const url = `${WS_BASE}/devices/ws/${deviceId}?token=${encodeURIComponent(token)}`;

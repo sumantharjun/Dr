@@ -41,7 +41,9 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const { data } = await api.post("/auth/register", form);
-      setAuth(data.user, data.access_token);
+      // Persist a new signup — the backend issues a remembered token for
+      // registration, so store it somewhere that survives a browser restart.
+      setAuth(data.user, data.access_token, true);
       navigate("/dashboard");
     } catch (err: any) {
       const status = err.response?.status;

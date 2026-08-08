@@ -36,6 +36,9 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+    # Opt-in to a long, browser-persistent session. Defaults to False so any
+    # existing client that doesn't send the field keeps the shorter session.
+    remember_me: bool = False
 
 
 class ForgotPasswordRequest(BaseModel):

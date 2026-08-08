@@ -10,6 +10,7 @@ from app.config import settings
 from app.database import Base, engine, SessionLocal
 from app.models import *  # noqa: F401,F403 — registers all ORM models with Base
 from app.routers import auth, devices, feeding, washing, dispensing, alerts, orders, metrics, activity, baby, uv
+from app.utils.dependencies import RENEWED_TOKEN_HEADER
 from app.utils.timezone import now_ist
 
 # ---------------------------------------------------------------------------
@@ -259,6 +260,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-Device-Api-Key"],
+    # Browsers withhold non-safelisted response headers from JS on cross-origin
+    # requests unless they're named here. The app and API are on different
+    # origins in production, so without this the sliding-session header would
+    # arrive on the wire and be invisible to axios — sessions would quietly
+    # stop renewing and users would be logged out again.
+    expose_headers=[RENEWED_TOKEN_HEADER],
 )
 
 
