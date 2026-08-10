@@ -4,6 +4,7 @@ import { Eye, EyeOff } from "lucide-react";
 import api from "../services/api";
 import { useAuthStore } from "../store/authStore";
 import Mascot from "../components/Mascot";
+import GoogleSignInButton from "../components/GoogleSignInButton";
 
 export default function RegisterPage() {
   const [form, setForm] = useState({ email: "", full_name: "", password: "" });
@@ -158,6 +159,14 @@ export default function RegisterPage() {
             {loading ? "Creating account..." : "Create Account"}
           </button>
         </form>
+
+        {/* Signing up with Google is always a persistent session — same as a
+            password registration, which already issues a remembered token. */}
+        <GoogleSignInButton
+          remember
+          onError={setError}
+          onSuccess={() => navigate("/dashboard")}
+        />
 
         <p className="text-center text-sm text-gray-500 mt-6">
           Already have an account?{" "}

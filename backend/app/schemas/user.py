@@ -41,6 +41,14 @@ class UserLogin(BaseModel):
     remember_me: bool = False
 
 
+class GoogleSignIn(BaseModel):
+    """The ID token issued by Google Identity Services in the browser."""
+    credential: str
+    # Same meaning as on UserLogin — the "Keep me signed in" checkbox is passed
+    # through so a provider sign-in honours the same choice as a password one.
+    remember_me: bool = False
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 

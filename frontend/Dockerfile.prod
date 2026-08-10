@@ -8,8 +8,12 @@ COPY . .
 # VITE_ env vars are baked into the JS bundle at build time
 ARG VITE_API_URL
 ARG VITE_WS_URL
+# Google OAuth Web-application client ID. Not a secret (it ships in the bundle),
+# but needed at build time. Unset = the Google button simply isn't rendered.
+ARG VITE_GOOGLE_CLIENT_ID
 ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_WS_URL=${VITE_WS_URL}
+ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
 
 RUN npm run build
 

@@ -27,3 +27,6 @@ class RateLimiter:
 login_limiter = RateLimiter(max_calls=5, period_seconds=60)       # 5 attempts / minute
 register_limiter = RateLimiter(max_calls=3, period_seconds=300)   # 3 attempts / 5 minutes
 reset_limiter = RateLimiter(max_calls=5, period_seconds=600)      # 5 reset requests / 10 minutes
+# Looser than login: a provider sign-in is one tap and a parent may legitimately
+# retry after dismissing the Google popup, but this still caps token-guessing.
+oauth_limiter = RateLimiter(max_calls=10, period_seconds=60)      # 10 attempts / minute

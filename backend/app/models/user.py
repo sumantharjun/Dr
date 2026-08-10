@@ -11,13 +11,19 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     full_name = Column(String(255), nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    # Nullable: a user who signed up with Google has no password at all. Storing
+    # a junk hash to satisfy a NOT NULL would make `verify_password` silently
+    # fail rather than letting callers detect "this account has no password".
+    password_hash = Column(String(255), nullable=True)
     # Bumped on every password change/reset. Tokens carry a `pwd_at` marker of
     # this value at issue time; get_current_user rejects tokens whose marker no
     # longer matches — so a password change/reset invalidates all prior sessions.
     password_changed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=now_ist)
 
+    auth_identities = relationship(
+        "AuthIdentity", back_populates="user", cascade="all, delete-orphan"
+    )
     devices = relationship("Device", back_populates="owner", cascade="all, delete")
     feeding_logs = relationship("FeedingLog", back_populates="user")
     orders = relationship("Order", back_populates="user")

@@ -10,6 +10,25 @@ const RETRY_BASE_DELAY_MS = 300;
 // or the browser hides it from JS cross-origin. Axios lowercases header keys.
 const RENEWED_TOKEN_HEADER = "x-renewed-token";
 
+/**
+ * Endpoints where a 401 means "these credentials are wrong", not "your session
+ * expired". They're called while signed out, so the usual redirect-to-login is
+ * both pointless and harmful: the hard navigation remounts the page and wipes
+ * the error message before anyone can read it. That's why a wrong password used
+ * to silently reset the form instead of saying so.
+ */
+const CREDENTIAL_ENDPOINTS = [
+  "/auth/login",
+  "/auth/register",
+  "/auth/google",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+];
+
+function isCredentialCheck(url?: string): boolean {
+  return !!url && CREDENTIAL_ENDPOINTS.some((path) => url.startsWith(path));
+}
+
 declare module "axios" {
   interface AxiosRequestConfig {
     _retryCount?: number;
@@ -39,7 +58,7 @@ api.interceptors.response.use(
   async (err: AxiosError) => {
     const config = err.config as AxiosRequestConfig & { _retryCount?: number };
 
-    if (err.response?.status === 401) {
+    if (err.response?.status === 401 && !isCredentialCheck(config?.url)) {
       // Clear both stores, not just localStorage — otherwise a non-remembered
       // session would leave a dead token in sessionStorage and every later
       // request would keep 401ing.

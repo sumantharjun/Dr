@@ -4,6 +4,7 @@ import { Eye, EyeOff } from "lucide-react";
 import api from "../services/api";
 import { useAuthStore } from "../store/authStore";
 import Mascot from "../components/Mascot";
+import GoogleSignInButton from "../components/GoogleSignInButton";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -150,6 +151,14 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
+
+        {/* Below the form. Reads the same "Keep me signed in" checkbox above, so
+            a Google sign-in honours whichever session length was chosen. */}
+        <GoogleSignInButton
+          remember={rememberMe}
+          onError={setError}
+          onSuccess={() => navigate("/dashboard")}
+        />
 
         <p className="text-center text-sm text-gray-500 mt-6">
           No account?{" "}

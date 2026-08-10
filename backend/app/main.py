@@ -147,47 +147,25 @@ except Exception:
 def _migrate_firmware_spec() -> None:
     """
     Idempotent migrations for the firmware-team spec changes:
-      - washing_cycles.mode ENUM widened to the superset (adds steam_dry, dry;
-        keeps legacy wash/deep_clean/dispense so historical rows stay valid).
       - milk_dispense_logs.scoop_number INT NULL added.
       - device_metrics power_kwh / water_liters made nullable (firmware has no
         flow/energy meters, so the API no longer requires them).
     Each step is guarded so it only runs when needed. No-ops on SQLite (which
     lacks MODIFY COLUMN / ENUM) are caught per-step.
+
+    REMOVED — narrowing washing_cycles.mode to ENUM('full_cycle','steam_dry',
+    'dry'). It has already run against every environment, and it was the one
+    DESTRUCTIVE step here: MySQL silently rewrites any value outside a narrowed
+    ENUM to ''. Because these migrations execute at import time, merely
+    importing this module against a live database was enough to trigger it —
+    which is exactly how 11 historical washing_cycles rows lost their mode.
+    Nothing that destroys data belongs on an import-time path; if the ENUM ever
+    needs narrowing again, do it with a deliberate one-shot in scripts/.
     """
     from sqlalchemy import inspect, text
 
     inspector = inspect(engine)
     is_mysql = engine.dialect.name == "mysql"
-
-    # 1) Update washing_cycles.mode ENUM to the allowed set {full_cycle,
-    #    steam_dry, dry}, dropping the removed modes (wash, deep_clean,
-    #    dispense). MySQL-only — ENUM/MODIFY are MySQL syntax; on SQLite the
-    #    column is created from the model definition, so nothing to do.
-    #    NOTE: narrowing the ENUM is destructive — any existing rows still on a
-    #    removed mode (wash/deep_clean/dispense) will be set to '' by MySQL.
-    if is_mysql:
-        try:
-            mode_col = next(
-                (c for c in inspector.get_columns("washing_cycles") if c["name"] == "mode"),
-                None,
-            )
-            type_str = str(mode_col["type"]).lower() if mode_col else ""
-            needs = mode_col is not None and (
-                "steam_dry" not in type_str   # pre-firmware enum: add new modes
-                or "deep_clean" in type_str   # still carries removed modes
-                or "dispense" in type_str
-                or "wash" in type_str
-            )
-            if needs:
-                with engine.begin() as conn:
-                    conn.execute(text(
-                        "ALTER TABLE washing_cycles MODIFY COLUMN mode "
-                        "ENUM('full_cycle','steam_dry','dry') NOT NULL"
-                    ))
-                logger.info("Updated washing_cycles.mode ENUM to {full_cycle, steam_dry, dry}")
-        except Exception:
-            logger.exception("mode ENUM migration failed/skipped")
 
     # 2) Add milk_dispense_logs.scoop_number (portable ADD COLUMN).
     try:

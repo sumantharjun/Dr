@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     # Comma-separated list of allowed CORS origins
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
 
+    # ── Google Sign-In ──────────────────────────────────────────────────────
+    # OAuth 2.0 Web-application client ID from Google Cloud Console. NOT a
+    # secret — it ships in the JS bundle too — but the server needs it to check
+    # the `aud` claim of incoming ID tokens. Left empty, /auth/google returns
+    # 503 and the frontend hides the button, so unconfigured environments are
+    # unaffected rather than broken.
+    GOOGLE_CLIENT_ID: str = ""
+
     # ── Password reset ──────────────────────────────────────────────────────
     PASSWORD_RESET_EXPIRE_MINUTES: int = 60
     # Base URL of the frontend, used to build the reset link in the email.
