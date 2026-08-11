@@ -25,6 +25,11 @@ class Device(Base):
     # the auth dependency looks up. Plaintext is returned once at registration
     # / rotation and is never persisted afterwards.
     api_key_hash = Column(String(64), unique=True, index=True, nullable=True)
+    # "Feeding now": which baby the scale's next report should be attributed to.
+    # Lives on the device rather than the user because the device is what
+    # reports — and with two devices each could be feeding a different baby.
+    # NULL means unknown, and reports then land unattributed.
+    active_baby_id = Column(Integer, ForeignKey("babies.id"), nullable=True)
     last_seen = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=now_ist)
 

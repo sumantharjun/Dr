@@ -6,38 +6,39 @@ import { useBabyStore } from "../store/babyStore";
 
 /**
  * Gate that sits between authentication and the main app shell:
- *   - No token            -> /login
- *   - Token but no baby   -> /baby-setup
- *   - Token AND baby      -> render the children (AppLayout)
+ *   - No token             -> /login
+ *   - Token but no babies  -> /baby-setup
+ *   - Token AND >=1 baby   -> render the children (AppLayout)
  *
- * The baby is fetched once per session and cached in babyStore (which also
- * applies the user's theme to <html data-theme=...>).
+ * The list is always refetched, even when a cached copy exists. It's one small
+ * request, and the cache can be stale in ways that matter now that there can be
+ * several babies — one added on another device wouldn't otherwise appear.
  */
 export default function BabyGate({ children }: { children: ReactNode }) {
   const { token } = useAuthStore();
-  const { baby, setBaby } = useBabyStore();
-  const [checking, setChecking] = useState(!baby);
+  const { babies, setBabies } = useBabyStore();
+  // Only block on the very first load; a refresh with babies already cached
+  // renders immediately and updates underneath.
+  const [checking, setChecking] = useState(babies.length === 0);
   const [needsSetup, setNeedsSetup] = useState(false);
 
   useEffect(() => {
     if (!token) return;
-    if (baby) {
-      setChecking(false);
-      return;
-    }
     api
       .get("/baby/")
       .then((r) => {
-        setBaby(r.data);
+        const list = r.data ?? [];
+        setBabies(list);
+        setNeedsSetup(list.length === 0);
         setChecking(false);
       })
       .catch((err) => {
-        if (err?.response?.status === 404) {
-          setNeedsSetup(true);
-        }
+        // 404 is no longer expected — the endpoint returns [] — but tolerate it
+        // in case an older backend is still deployed.
+        if (err?.response?.status === 404) setNeedsSetup(true);
         setChecking(false);
       });
-  }, [token, baby, setBaby]);
+  }, [token, setBabies]);
 
   if (!token) return <Navigate to="/login" replace />;
   if (checking) {

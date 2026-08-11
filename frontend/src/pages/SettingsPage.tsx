@@ -1,30 +1,31 @@
 import { useState, useEffect, FormEvent } from "react";
-import { Link } from "react-router-dom";
-import { Palette, Baby as BabyIcon, Cpu, ChevronRight, Check } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Palette, Baby as BabyIcon, Cpu, ChevronRight, Check, Plus } from "lucide-react";
 import { clsx } from "clsx";
 import api from "../services/api";
-import Mascot from "../components/Mascot";
-import { useBabyStore } from "../store/babyStore";
+import BabyProfileFields, { BabyForm, formFor, isDirty } from "../components/BabyProfileFields";
+import { MAX_BABIES, useBabyStore } from "../store/babyStore";
 import { useAuthStore } from "../store/authStore";
 import { useToastStore } from "../store/toastStore";
-import { ageDaysFromISO, describeAge, earliestDobISO, todayISO } from "../services/age";
+import { earliestDobISO, todayISO } from "../services/age";
 import { applyTheme as applyAppTheme, DEFAULT_THEME } from "../services/theme";
 import { THEME_COLORS, type Device, type ThemeColor } from "../types";
 
 export default function SettingsPage() {
-  const { baby, setBaby } = useBabyStore();
+  const babies = useBabyStore((s) => s.babies);
+  const upsertBaby = useBabyStore((s) => s.upsertBaby);
+  const removeBaby = useBabyStore((s) => s.removeBaby);
   const { user, setUser } = useAuthStore();
   const { addToast } = useToastStore();
+  const navigate = useNavigate();
 
-  const [name, setName] = useState(baby?.name ?? "");
-  const [gender, setGender] = useState<"male" | "female">(baby?.gender ?? "male");
-  const [dob, setDob] = useState(baby?.date_of_birth ?? "");
-  const [weight, setWeight] = useState(baby ? String(baby.weight_kg) : "");
   const [theme, setThemeLocal] = useState<ThemeColor>(user?.theme_color ?? DEFAULT_THEME);
-  const [saving, setSaving] = useState(false);
   const [device, setDevice] = useState<Device | null>(null);
-
-  const age = describeAge(ageDaysFromISO(dob));
+  const [saving, setSaving] = useState(false);
+  const [removingId, setRemovingId] = useState<number | null>(null);
+  const [forms, setForms] = useState<Record<number, BabyForm>>(() =>
+    Object.fromEntries(babies.map((b) => [b.id, formFor(b)])),
+  );
 
   useEffect(() => {
     api
@@ -33,211 +34,246 @@ export default function SettingsPage() {
       .catch(() => setDevice(null));
   }, []);
 
-  if (!baby) {
-    return (
-      <div className="p-4 sm:p-6 max-w-2xl mx-auto">
-        <p className="text-gray-500">Baby profile not loaded.</p>
-      </div>
-    );
-  }
+  // Seed a form for any baby that appears (added elsewhere, or loaded after
+  // mount) and drop forms for ones that vanish. Keyed on the ID LIST, not on
+  // `babies` itself — the store hands back a new array after every save, and
+  // depending on that would wipe whatever the user was mid-way through typing
+  // in the other baby's fields.
+  const babyIds = babies.map((b) => b.id).join(",");
+  useEffect(() => {
+    setForms((prev) => {
+      const next: Record<number, BabyForm> = {};
+      for (const b of babies) next[b.id] = prev[b.id] ?? formFor(b);
+      return next;
+    });
+  }, [babyIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function pickTheme(color: ThemeColor) {
+  /**
+   * The palette saves on click rather than waiting for Save — it's a
+   * direct-manipulation control and the preview applies instantly, so deferring
+   * it would leave the app showing a colour that isn't stored. Rolled back on
+   * failure.
+   */
+  async function pickTheme(color: ThemeColor) {
+    const previous = theme;
     setThemeLocal(color);
-    applyAppTheme(color); // instant preview; persisted on save below
+    applyAppTheme(color);
+    try {
+      const { data } = await api.patch("/auth/me/preferences", { theme_color: color });
+      setUser(data);
+    } catch (err: any) {
+      setThemeLocal(previous);
+      applyAppTheme(previous);
+      addToast(err.response?.data?.detail || "Couldn't change the theme", "error");
+    }
   }
 
+  /**
+   * One Save for every baby on the page.
+   *
+   * Validates all of them first and refuses the whole submit if any is bad —
+   * saving one twin and rejecting the other would leave the page in a state
+   * where it isn't obvious what was written. Only changed babies are sent.
+   */
   async function handleSave(e: FormEvent) {
     e.preventDefault();
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      addToast("Baby's name is required", "error");
+
+    for (const b of babies) {
+      const f = forms[b.id];
+      if (!f) continue;
+      // Name the baby in each message: with two sets of fields on screen,
+      // "Weight must be between…" alone doesn't say which one to fix.
+      if (!f.name.trim()) {
+        addToast(`${b.name}: name is required`, "error");
+        return;
+      }
+      const w = Number(f.weight);
+      if (!w || w < 0.5 || w > 30) {
+        addToast(`${b.name}: weight must be between 0.5 and 30 kg`, "error");
+        return;
+      }
+      if (f.dob && (f.dob > todayISO() || f.dob < earliestDobISO())) {
+        addToast(`${b.name}: please check the date of birth`, "error");
+        return;
+      }
+    }
+
+    const changed = babies.filter((b) => forms[b.id] && isDirty(b, forms[b.id]));
+    if (changed.length === 0) {
+      addToast("No changes to save", "info");
       return;
     }
-    const w = Number(weight);
-    if (!w || w < 0.5 || w > 30) {
-      addToast("Weight must be between 0.5 and 30 kg", "error");
-      return;
-    }
-    if (dob && (dob > todayISO() || dob < earliestDobISO())) {
-      addToast("Please check the date of birth", "error");
-      return;
-    }
+
     setSaving(true);
     try {
-      const { data } = await api.patch("/baby/", {
-        name: trimmedName,
-        gender,
-        // Omitted when blank: PATCH treats null as "leave unchanged", and there
-        // is no way to clear a DOB back to unknown once set.
-        ...(dob ? { date_of_birth: dob } : {}),
-        weight_kg: w,
-      });
-      setBaby(data);
-
-      // The colour belongs to the account, so it saves separately from the baby.
-      if (theme !== user?.theme_color) {
-        const { data: updatedUser } = await api.patch("/auth/me/preferences", {
-          theme_color: theme,
+      for (const b of changed) {
+        const f = forms[b.id];
+        const { data } = await api.patch(`/baby/${b.id}`, {
+          name: f.name.trim(),
+          gender: f.gender,
+          // Omitted when blank: PATCH treats null as "leave unchanged", and
+          // there is no way to clear a DOB back to unknown once set.
+          ...(f.dob ? { date_of_birth: f.dob } : {}),
+          weight_kg: Number(f.weight),
         });
-        setUser(updatedUser);
+        upsertBaby(data);
       }
-      addToast("Settings saved", "success");
+      addToast(changed.length > 1 ? "Profiles saved" : `${changed[0].name}'s profile saved`, "success");
     } catch (err: any) {
-      // Undo the instant preview — otherwise the app keeps a colour that was
-      // never persisted and reverts confusingly on the next reload.
-      const saved = user?.theme_color ?? DEFAULT_THEME;
-      setThemeLocal(saved);
-      applyAppTheme(saved);
       addToast(err.response?.data?.detail || "Failed to save", "error");
     } finally {
       setSaving(false);
     }
   }
 
+  async function handleRemove(id: number, name: string) {
+    if (babies.length <= 1) return;
+    if (!confirm(
+      `Remove ${name}'s profile? Their feeding history is kept but will no ` +
+      `longer be linked to a baby. This cannot be undone.`
+    )) return;
+    setRemovingId(id);
+    try {
+      await api.delete(`/baby/${id}`);
+      removeBaby(id);
+      addToast(`${name}'s profile removed`, "success");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Couldn't remove the profile", "error");
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  const multiple = babies.length > 1;
+
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-gray-500 text-sm mt-1">
-          Manage your baby's profile and app theme.
+          {/* Not "{babies}'s" — that pluralises into "babies's". */}
+          {multiple
+            ? "Manage your babies' profiles and app theme."
+            : "Manage your baby's profile and app theme."}
         </p>
       </div>
 
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* Theme card */}
+      {/* Theme — an account-level preference, so it sits above the babies. */}
+      <section className="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Palette className="w-5 h-5 text-primary-600" />
+          <h2 className="font-semibold text-gray-900">App theme</h2>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">
+          Pick the colour you'd like across the app.
+        </p>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+          {THEME_COLORS.map((t) => {
+            const active = theme === t.value;
+            return (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => pickTheme(t.value)}
+                aria-pressed={active}
+                title={t.label}
+                className={clsx(
+                  "border-2 rounded-2xl p-3 flex flex-col items-center gap-2 transition-all",
+                  active
+                    ? "border-primary-500 bg-primary-50 dark:bg-primary-500/15 ring-2 ring-primary-300"
+                    : "border-gray-200 hover:border-gray-300 bg-white",
+                )}
+              >
+                {/* Literal hex, not a `primary` class: all six swatches are on
+                    screen at once, and the CSS variables only ever hold the
+                    currently-active palette. */}
+                <span
+                  className="w-8 h-8 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: t.swatch }}
+                >
+                  {/* Non-colour cue as well as the ring — colour alone can't
+                      carry state, least of all in a colour picker (WCAG 1.4.1). */}
+                  {active && <Check className="w-4 h-4 text-white" />}
+                </span>
+                <span className="text-xs font-medium text-gray-700">{t.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Every baby in ONE section with ONE Save — two Save buttons on a single
+          page left it ambiguous which one applied to what. */}
+      <form onSubmit={handleSave}>
         <section className="bg-white rounded-2xl border border-gray-200 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Palette className="w-5 h-5 text-primary-600" />
-            <h2 className="font-semibold text-gray-900">App theme</h2>
+          <div className="flex items-center gap-2 mb-5 flex-wrap">
+            <BabyIcon className="w-5 h-5 text-primary-600" />
+            <h2 className="font-semibold text-gray-900">
+              {multiple ? `Babies (${babies.length})` : "Baby profile"}
+            </h2>
+            {/* Hidden at the limit rather than disabled: a permanently greyed
+                button invites clicking to find out why. */}
+            {babies.length < MAX_BABIES && (
+              <button
+                type="button"
+                onClick={() => navigate("/baby-setup")}
+                className="ml-auto flex items-center gap-1.5 text-xs font-medium text-primary-700 border border-primary-300 hover:bg-primary-50 rounded-lg px-2.5 py-1.5 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add baby
+              </button>
+            )}
           </div>
-          <p className="text-sm text-gray-500 mb-4">
-            Pick the colour you'd like across the app.
-          </p>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-            {THEME_COLORS.map((t) => {
-              const active = theme === t.value;
-              return (
-                <button
-                  key={t.value}
-                  type="button"
-                  onClick={() => pickTheme(t.value)}
-                  aria-pressed={active}
-                  title={t.label}
+
+          {babies.length === 0 ? (
+            <p className="text-gray-500 text-sm">Baby profile not loaded.</p>
+          ) : (
+            <div
+              className={clsx(
+                "grid gap-4",
+                // Second column ONLY with more than one baby: a lg:grid-cols-2
+                // grid holding a single set of fields would leave it half-width
+                // beside dead space.
+                multiple && "lg:grid-cols-2",
+              )}
+            >
+              {babies.map((b) => (
+                <div
+                  key={b.id}
                   className={clsx(
-                    "border-2 rounded-2xl p-3 flex flex-col items-center gap-2 transition-all",
-                    active
-                      ? "border-primary-500 bg-primary-50 dark:bg-primary-500/15 ring-2 ring-primary-300"
-                      : "border-gray-200 hover:border-gray-300 bg-white",
+                    // Each baby gets its own sub-panel rather than being split
+                    // by a rule — a bare divider read as one form cut in half.
+                    // `surface-nested` (index.css) rather than bg-gray-*: the
+                    // neutral tokens land ~1.03:1 from the card in dark mode,
+                    // which is invisible. Only applied with more than one baby;
+                    // a lone panel inside the card would be a box in a box.
+                    multiple && "surface-nested border rounded-xl p-4",
                   )}
                 >
-                  {/* Literal hex, not a `primary` class: all six swatches are on
-                      screen at once, and the CSS variables only ever hold the
-                      currently-active palette. */}
-                  <span
-                    className="w-8 h-8 rounded-full flex items-center justify-center"
-                    style={{ backgroundColor: t.swatch }}
-                  >
-                    {/* Non-colour cue as well as the ring — colour alone can't
-                        carry state, least of all in a colour picker (WCAG 1.4.1). */}
-                    {active && <Check className="w-4 h-4 text-white" />}
-                  </span>
-                  <span className="text-xs font-medium text-gray-700">{t.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Baby info card */}
-        <section className="bg-white rounded-2xl border border-gray-200 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <BabyIcon className="w-5 h-5 text-primary-600" />
-            <h2 className="font-semibold text-gray-900">Baby profile</h2>
-          </div>
-
-          <div className="flex items-start gap-5">
-            <Mascot variant="auto" size={120} className="flex-shrink-0" />
-            <div className="flex-1 space-y-4">
-              <div>
-                <label htmlFor="settings-name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="settings-name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-                  maxLength={255}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="settings-dob" className="block text-sm font-medium text-gray-700 mb-1">
-                  Date of birth
-                </label>
-                <input
-                  id="settings-dob"
-                  type="date"
-                  value={dob}
-                  onChange={(e) => setDob(e.target.value)}
-                  max={todayISO()}
-                  min={earliestDobISO()}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-                />
-                {age ? (
-                  <p className="text-xs text-gray-400 mt-1">{age}.</p>
-                ) : (
-                  // Profiles created before this field existed land here. Say
-                  // what it unlocks rather than just flagging it as empty.
-                  <p className="text-xs text-amber-600 mt-1">
-                    Add a date of birth to enable age-based feeding volume and interval guidance.
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Gender
-                  </label>
-                  <select
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value as "male" | "female")}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-                  >
-                    <option value="male">Boy</option>
-                    <option value="female">Girl</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Weight (kg)
-                  </label>
-                  <input
-                    type="number"
-                    min="0.5"
-                    max="30"
-                    step="0.1"
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  <BabyProfileFields
+                    baby={b}
+                    value={forms[b.id] ?? formFor(b)}
+                    onChange={(next) => setForms((p) => ({ ...p, [b.id]: next }))}
+                    onRemove={() => handleRemove(b.id, b.name)}
+                    canRemove={multiple}
+                    removing={removingId === b.id}
+                    compact={multiple}
                   />
                 </div>
-              </div>
+              ))}
             </div>
-          </div>
+          )}
 
-          <div className="flex justify-end mt-5 pt-4 border-t border-gray-100">
-            <button
-              type="submit"
-              disabled={saving}
-              className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors"
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </button>
-          </div>
+          {babies.length > 0 && (
+            <div className="flex justify-end mt-6 pt-4 border-t border-gray-100">
+              <button
+                type="submit"
+                disabled={saving}
+                className="bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors"
+              >
+                {saving ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          )}
         </section>
       </form>
 

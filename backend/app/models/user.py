@@ -33,6 +33,7 @@ class User(Base):
     auth_identities = relationship(
         "AuthIdentity", back_populates="user", cascade="all, delete-orphan"
     )
+    babies = relationship("Baby", back_populates="user", cascade="all, delete-orphan")
     devices = relationship("Device", back_populates="owner", cascade="all, delete")
     feeding_logs = relationship("FeedingLog", back_populates="user")
     orders = relationship("Order", back_populates="user")

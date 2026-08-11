@@ -10,6 +10,10 @@ class DeviceAlert(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     device_id = Column(Integer, ForeignKey("devices.id"), nullable=False, index=True)
+    # Which baby the alert concerns, for feeding alerts. NULL for device-level
+    # alerts (wash, UV, connectivity) which aren't about a baby at all. Used to
+    # scope duplicate suppression so one twin's alert can't mute the other's.
+    baby_id = Column(Integer, ForeignKey("babies.id"), nullable=True, index=True)
     alert_type = Column(String(100), nullable=False)
     message = Column(Text, nullable=False)
     severity = Column(Enum("info", "warning", "error", "critical"), default="warning")

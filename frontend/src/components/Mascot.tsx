@@ -1,4 +1,4 @@
-import { useBabyStore } from "../store/babyStore";
+import { useSelectedBaby } from "../store/babyStore";
 
 type Variant = "auto" | "sleeping" | "boy" | "girl";
 
@@ -23,7 +23,7 @@ export default function Mascot({
   className = "",
   alt,
 }: MascotProps) {
-  const baby = useBabyStore((s) => s.baby);
+  const baby = useSelectedBaby();
 
   let src = "/mascots/Sleeping_Bear_Mascot.png";
   let label = "Sleeping bear mascot";

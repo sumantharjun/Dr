@@ -7,6 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.baby import Baby
 from app.models.device import Device
 from app.models.feeding import FeedingLog
 from app.models.user import User
@@ -27,17 +28,31 @@ router = APIRouter(prefix="/feeding", tags=["feeding"])
 WEIGHT_TO_ML_FACTOR = 0.97  # 100g ≈ 97ml per BRD spec
 
 
+def _owned_baby(baby_id: int, user: User, db: Session) -> Baby:
+    """404 unless this baby belongs to the caller. Scoped by user_id as well as
+    id so a guessed id from another account looks the same as a missing one."""
+    baby = db.query(Baby).filter(Baby.id == baby_id, Baby.user_id == user.id).first()
+    if not baby:
+        raise HTTPException(status_code=404, detail="Baby not found")
+    return baby
+
+
 @router.get("/logs", response_model=List[FeedingLogOut])
 def get_feeding_logs(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    baby_id: Optional[int] = Query(None, description="Restrict to one baby"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Feeding history. Omit `baby_id` for every baby on the account (which is
+    also what a single-baby client gets by not sending it)."""
+    q = db.query(FeedingLog).filter(FeedingLog.user_id == current_user.id)
+    if baby_id is not None:
+        _owned_baby(baby_id, current_user, db)
+        q = q.filter(FeedingLog.baby_id == baby_id)
     return (
-        db.query(FeedingLog)
-        .filter(FeedingLog.user_id == current_user.id)
-        .order_by(FeedingLog.feed_time.desc())
+        q.order_by(FeedingLog.feed_time.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -53,6 +68,8 @@ async def create_feeding_log(
     # If a device is referenced, it must belong to the caller. Otherwise a user
     # could attach feeding logs to (and trigger alerts on) another user's
     # device by guessing its id. device_id stays optional for manual feeds.
+    _owned_baby(body.baby_id, current_user, db)
+
     if body.device_id is not None:
         device = db.query(Device).filter(
             Device.id == body.device_id, Device.user_id == current_user.id
@@ -74,6 +91,7 @@ async def create_feeding_log(
     log = FeedingLog(
         user_id=current_user.id,
         device_id=body.device_id,
+        baby_id=body.baby_id,
         feed_time=body.feed_time or now_ist(),
         weight_before_g=body.weight_before_g,
         weight_after_g=body.weight_after_g,
@@ -86,7 +104,9 @@ async def create_feeding_log(
     db.commit()
     db.refresh(log)
 
-    await analyze_and_alert(user_id=current_user.id, device_id=log.device_id, db=db)
+    await analyze_and_alert(
+        user_id=current_user.id, baby_id=log.baby_id, device_id=log.device_id, db=db
+    )
 
     return log
 
@@ -133,6 +153,10 @@ async def device_feed_report(
     log = FeedingLog(
         user_id=device.user_id,
         device_id=device.id,
+        # The scale cannot know which baby it weighed, so we attribute to
+        # whichever the app last marked as "feeding now". NULL when unset —
+        # unattributed is honest, guessing is not.
+        baby_id=device.active_baby_id,
         feed_time=body.feed_time or now_ist(),
         weight_before_g=body.weight_before_g,
         weight_after_g=body.weight_after_g,
@@ -144,7 +168,9 @@ async def device_feed_report(
     db.commit()
     db.refresh(log)
 
-    await analyze_and_alert(user_id=device.user_id, device_id=device.id, db=db)
+    await analyze_and_alert(
+        user_id=device.user_id, baby_id=log.baby_id, device_id=device.id, db=db
+    )
 
     # Notify connected app clients so they can refresh the feeding page in real time
     await manager.broadcast_to_device(
@@ -158,18 +184,27 @@ async def device_feed_report(
 @router.get("/analytics", response_model=List[FeedingAnalytics])
 def get_analytics(
     days: int = Query(7, ge=1, le=30),
+    baby_id: Optional[int] = Query(None, description="Restrict to one baby"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Daily intake and feed counts. Pass `baby_id` for one baby — without it
+    the totals combine every baby on the account, which is only meaningful when
+    there is one."""
     since = now_ist() - timedelta(days=days)
-    rows = (
+    q = (
         db.query(
             func.date(FeedingLog.feed_time).label("date"),
             func.coalesce(func.sum(FeedingLog.milk_consumed_ml), 0).label("total_ml"),
             func.count(FeedingLog.id).label("feed_count"),
         )
         .filter(FeedingLog.user_id == current_user.id, FeedingLog.feed_time >= since)
-        .group_by(func.date(FeedingLog.feed_time))
+    )
+    if baby_id is not None:
+        _owned_baby(baby_id, current_user, db)
+        q = q.filter(FeedingLog.baby_id == baby_id)
+    rows = (
+        q.group_by(func.date(FeedingLog.feed_time))
         .order_by(func.date(FeedingLog.feed_time))
         .all()
     )
@@ -181,15 +216,22 @@ def get_analytics(
 
 @router.get("/schedule", response_model=FeedingSchedule)
 def get_schedule(
+    baby_id: Optional[int] = Query(None, description="Whose schedule to compute"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    last = (
-        db.query(FeedingLog)
-        .filter(FeedingLog.user_id == current_user.id)
-        .order_by(FeedingLog.feed_time.desc())
-        .first()
-    )
+    """
+    Last feed, elapsed time and next due.
+
+    `baby_id` matters most here: twins are on two independent schedules, and a
+    combined "next feed due" describes neither of them. Without it the answer
+    spans every baby on the account.
+    """
+    q = db.query(FeedingLog).filter(FeedingLog.user_id == current_user.id)
+    if baby_id is not None:
+        _owned_baby(baby_id, current_user, db)
+        q = q.filter(FeedingLog.baby_id == baby_id)
+    last = q.order_by(FeedingLog.feed_time.desc()).first()
     if not last:
         return FeedingSchedule(
             last_feed_time=None,

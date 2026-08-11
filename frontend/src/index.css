@@ -139,6 +139,29 @@
 .dark .text-gray-500 { color: #9aa3b2; }
 .dark .text-gray-400 { color: #7b8494; }
 
+/* Nested panel — a sub-surface sitting INSIDE a card (one baby within the
+   Babies section, for example).
+   Not built from the neutral bg-gray-* tokens: in dark mode `.dark .bg-gray-100`
+   resolves to #1f2738 against a #1e2533 card, a contrast ratio of ~1.03:1, so
+   the panels visually merged into one block. These values are picked to be
+   clearly separate from the card at a glance, with a border doing the rest of
+   the work — a fill difference alone is hard to see on dark surfaces. Defined
+   here rather than as a `dark:` variant because the overrides in this file come
+   after Tailwind's utilities and would win. */
+.surface-nested {
+  background-color: #f4f5f7;
+  /* On white the fill alone is only ~1.09:1, so the border does most of the
+     separating — it needs to be clearly darker than the panel, not a hairline. */
+  border-color: #d3d9e2;
+}
+.dark .surface-nested {
+  /* Lifted well clear of the #1e2533 card. The first attempt used the neutral
+     bg-gray-100 token, which lands at ~1.03:1 here and read as one merged
+     block; this sits at ~1.5:1 so each baby reads as its own panel at a glance. */
+  background-color: #36435a;
+  border-color: #55637d;
+}
+
 /* Brand text on dark surfaces.
    The `primary` scale is chosen for dark-on-light: primary-700 measures 2.16:1
    against the dark card background, well under AA. Remapping the two shades

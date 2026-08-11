@@ -83,8 +83,8 @@ def test_get_returns_dob_and_age(client, auth):
     _create(client, headers, date_of_birth=_iso(200))
     r = client.get("/baby/", headers=headers)
     assert r.status_code == 200, r.text
-    assert r.json()["date_of_birth"] == _iso(200)
-    assert r.json()["age_days"] == 200
+    assert r.json()[0]["date_of_birth"] == _iso(200)
+    assert r.json()[0]["age_days"] == 200
 
 
 def test_legacy_profile_without_dob_reports_null_age(client, auth):
@@ -106,8 +106,8 @@ def test_legacy_profile_without_dob_reports_null_age(client, auth):
 
     r = client.get("/baby/", headers=headers)
     assert r.status_code == 200, r.text
-    assert r.json()["date_of_birth"] is None
-    assert r.json()["age_days"] is None
+    assert r.json()[0]["date_of_birth"] is None
+    assert r.json()[0]["age_days"] is None
 
 
 # ── update ──────────────────────────────────────────────────────────────────
@@ -128,7 +128,8 @@ def test_patch_can_backfill_a_missing_dob(client, auth):
     finally:
         db.close()
 
-    r = client.patch("/baby/", headers=headers, json={"date_of_birth": _iso(90)})
+    baby_id = client.get("/baby/", headers=headers).json()[0]["id"]
+    r = client.patch(f"/baby/{baby_id}", headers=headers, json={"date_of_birth": _iso(90)})
     assert r.status_code == 200, r.text
     assert r.json()["date_of_birth"] == _iso(90)
     assert r.json()["age_days"] == 90
@@ -136,8 +137,8 @@ def test_patch_can_backfill_a_missing_dob(client, auth):
 
 def test_patch_without_dob_leaves_it_untouched(client, auth):
     headers = _auth(client, auth)
-    _create(client, headers, date_of_birth=_iso(45))
-    r = client.patch("/baby/", headers=headers, json={"weight_kg": 6.1})
+    baby_id = _create(client, headers, date_of_birth=_iso(45)).json()["id"]
+    r = client.patch(f"/baby/{baby_id}", headers=headers, json={"weight_kg": 6.1})
     assert r.status_code == 200, r.text
     assert r.json()["date_of_birth"] == _iso(45), "DOB must survive an unrelated update"
     assert r.json()["weight_kg"] == 6.1
@@ -145,6 +146,6 @@ def test_patch_without_dob_leaves_it_untouched(client, auth):
 
 def test_patch_rejects_a_future_dob(client, auth):
     headers = _auth(client, auth)
-    _create(client, headers, date_of_birth=_iso(45))
-    r = client.patch("/baby/", headers=headers, json={"date_of_birth": _iso(-1)})
+    baby_id = _create(client, headers, date_of_birth=_iso(45)).json()["id"]
+    r = client.patch(f"/baby/{baby_id}", headers=headers, json={"date_of_birth": _iso(-1)})
     assert r.status_code == 422, r.text

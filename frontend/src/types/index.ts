@@ -28,6 +28,8 @@ export interface Device {
   mac_address: string;
   wifi_ssid: string | null;
   status: "online" | "offline" | "pairing" | "error";
+  /** Which baby this device's scale reports are attributed to ("Feeding now"). */
+  active_baby_id: number | null;
   last_seen: string | null;
   created_at: string;
 }

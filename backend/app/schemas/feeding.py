@@ -9,6 +9,9 @@ VALID_MILK_TYPES = {"breast_milk", "formula", "cow_milk", "mixed", "other"}
 
 class FeedingLogCreate(BaseModel):
     device_id: Optional[int] = None
+    # Required: with more than one baby on an account, an unattributed feed
+    # makes every derived figure — schedule, intake, alerts — wrong for both.
+    baby_id: int
     feed_time: Optional[datetime] = None
     weight_before_g: Optional[float] = None
     weight_after_g: Optional[float] = None
@@ -64,6 +67,9 @@ class FeedingLogOut(BaseModel):
     weight_after_g: Optional[float]
     milk_consumed_ml: Optional[float]
     method: str
+    # Nullable: device reports arriving before a "feeding now" baby is set are
+    # deliberately left unattributed rather than guessed.
+    baby_id: Optional[int]
     # Optional on the way out: rows predating this field and device-reported
     # feeds can legitimately have no milk type.
     milk_type: Optional[str]

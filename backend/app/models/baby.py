@@ -8,11 +8,13 @@ from app.utils.timezone import now_ist
 
 
 class Baby(Base):
-    """One-to-one with User: parent's baby profile."""
+    """A baby profile. A user may have several — twins are the motivating case."""
     __tablename__ = "babies"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    # Indexed but NOT unique: this was one-to-one until multi-baby support.
+    # Dropping that constraint is what allows twins on a single account.
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     # Required: the app greets and labels by name throughout, and a blank one
     # degrades every one of those into generic copy. Rows predating this rule
     # were backfilled to 'Baby' by scripts/backfill_baby_name.py, which also
@@ -29,7 +31,8 @@ class Baby(Base):
     created_at = Column(DateTime, default=now_ist)
     updated_at = Column(DateTime, default=now_ist, onupdate=now_ist)
 
-    user = relationship("User", backref="baby")
+    user = relationship("User", back_populates="babies")
+    feeding_logs = relationship("FeedingLog", back_populates="baby")
 
     @property
     def age_days(self) -> Optional[int]:

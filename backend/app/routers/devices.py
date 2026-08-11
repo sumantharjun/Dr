@@ -10,7 +10,14 @@ from app.database import get_db
 from app.models.device import Device
 from app.models.pending_command import PendingCommand
 from app.models.user import User
-from app.schemas.device import DeviceCommand, DeviceCreate, DeviceOut, DeviceWithKeyOut
+from app.models.baby import Baby
+from app.schemas.device import (
+    ActiveBabyUpdate,
+    DeviceCommand,
+    DeviceCreate,
+    DeviceOut,
+    DeviceWithKeyOut,
+)
 from sqlalchemy import or_
 
 from app.services.alerts_ops import create_device_alert
@@ -286,6 +293,40 @@ def rotate_api_key(
     db.commit()
     db.refresh(device)
     device.api_key = plaintext_key  # transient — returned once, never stored
+    return device
+
+
+@router.patch("/{device_id}/active-baby", response_model=DeviceOut)
+def set_active_baby(
+    device_id: int,
+    body: ActiveBabyUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Set which baby this device is currently feeding ("Feeding now").
+
+    The scale reports a weight delta and cannot know which baby it weighed, so
+    this is how a device-reported feed gets attributed. Pass `baby_id: null` to
+    clear it — subsequent reports then land unattributed rather than being
+    credited to whoever was fed last.
+    """
+    device = db.query(Device).filter(
+        Device.id == device_id, Device.user_id == current_user.id
+    ).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    if body.baby_id is not None:
+        owned = db.query(Baby).filter(
+            Baby.id == body.baby_id, Baby.user_id == current_user.id
+        ).first()
+        if not owned:
+            raise HTTPException(status_code=404, detail="Baby not found")
+
+    device.active_baby_id = body.baby_id
+    db.commit()
+    db.refresh(device)
     return device
 
 

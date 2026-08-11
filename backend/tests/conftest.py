@@ -101,6 +101,37 @@ def auth(client):
 
 
 @pytest.fixture()
+def make_baby(client):
+    """
+    Factory: create a baby for the given auth headers, return its id.
+
+    Feeding endpoints require a baby_id since multi-baby support, so most
+    feeding tests need one of these first.
+    """
+    _seq = {"n": 0}
+
+    def _make(headers, name=None, days_old=60):
+        from datetime import timedelta
+        from app.utils.timezone import now_ist
+
+        _seq["n"] += 1
+        r = client.post(
+            "/baby/",
+            headers=headers,
+            json={
+                "name": name or f"Baby {_seq['n']}",
+                "gender": "female",
+                "weight_kg": 4.2,
+                "date_of_birth": (now_ist().date() - timedelta(days=days_old)).isoformat(),
+            },
+        )
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    return _make
+
+
+@pytest.fixture()
 def make_device(client):
     """Factory: register a device for the given auth headers, return (device_id, api_key)."""
     def _make(headers):

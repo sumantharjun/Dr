@@ -16,7 +16,7 @@ const PW_FIELDS = [
 
 export default function ProfileMenu() {
   const { user, logout, setAuth } = useAuthStore();
-  const { setBaby } = useBabyStore();
+  const clearBabies = useBabyStore((s) => s.clear);
   const { addToast } = useToastStore();
   const navigate = useNavigate();
 
@@ -49,7 +49,7 @@ export default function ProfileMenu() {
 
   function doLogout() {
     logout();
-    setBaby(null);
+    clearBabies();
     navigate("/login", { replace: true });
   }
 

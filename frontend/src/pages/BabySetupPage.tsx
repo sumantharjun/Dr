@@ -2,7 +2,7 @@ import { useState, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Mascot from "../components/Mascot";
-import { useBabyStore } from "../store/babyStore";
+import { MAX_BABIES, useBabyStore } from "../store/babyStore";
 import { ageDaysFromISO, describeAge, earliestDobISO, todayISO } from "../services/age";
 
 export default function BabySetupPage() {
@@ -12,8 +12,14 @@ export default function BabySetupPage() {
   const [weight, setWeight] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const { setBaby } = useBabyStore();
+  const upsertBaby = useBabyStore((s) => s.upsertBaby);
+  const selectBaby = useBabyStore((s) => s.selectBaby);
+  const babies = useBabyStore((s) => s.babies);
   const navigate = useNavigate();
+  // Reachable directly (browser back, a bookmark) even with the "Add baby"
+  // control hidden, so say so up front rather than letting someone fill in the
+  // whole form and be rejected by the API.
+  const atLimit = babies.length >= MAX_BABIES;
 
   // Live echo of the age as the parent picks a date — confirms they entered
   // what they meant before they commit to it.
@@ -29,7 +35,7 @@ export default function BabySetupPage() {
       return;
     }
     if (!gender) {
-      setError("Please select a gender so we can set up the theme.");
+      setError("Please select a gender.");
       return;
     }
     if (!dob) {
@@ -58,13 +64,39 @@ export default function BabySetupPage() {
         date_of_birth: dob,
         weight_kg: w,
       });
-      setBaby(data);
+      // Add and select it, so the app lands showing the baby just created —
+      // relevant when this is a second baby added from Settings.
+      upsertBaby(data);
+      selectBaby(data.id);
       navigate("/dashboard");
     } catch (err: any) {
       setError(err.response?.data?.detail || "Could not save baby profile");
     } finally {
       setSaving(false);
     }
+  }
+
+  if (atLimit) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cream-50 via-cream-100 to-sky-brand/30 p-4">
+        <div className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md text-center">
+          <Mascot variant="sleeping" size={140} className="mx-auto" />
+          <h1 className="text-xl font-bold text-gray-900 mt-4">
+            You've added the maximum of {MAX_BABIES} babies
+          </h1>
+          <p className="text-gray-500 text-sm mt-2">
+            Remove one from Settings first if you need to add another.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate("/settings")}
+            className="mt-6 w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2.5 rounded-lg transition-colors"
+          >
+            Back to Settings
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -110,7 +142,6 @@ export default function BabySetupPage() {
               >
                 <span className="text-2xl">👦</span>
                 <span className="text-sm font-semibold text-gray-800">Boy</span>
-                <span className="text-xs text-gray-500">Blue theme</span>
               </button>
               <button
                 type="button"
@@ -123,7 +154,6 @@ export default function BabySetupPage() {
               >
                 <span className="text-2xl">👧</span>
                 <span className="text-sm font-semibold text-gray-800">Girl</span>
-                <span className="text-xs text-gray-500">Pink theme</span>
               </button>
             </div>
           </div>

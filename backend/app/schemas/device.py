@@ -15,6 +15,9 @@ class DeviceOut(BaseModel):
     mac_address: str
     wifi_ssid: Optional[str]
     status: str
+    # Which baby this device's next scale report should be attributed to.
+    # NULL means unset, and reports then land unattributed.
+    active_baby_id: Optional[int]
     last_seen: Optional[datetime]
     created_at: datetime
 
@@ -29,3 +32,8 @@ class DeviceWithKeyOut(DeviceOut):
 class DeviceCommand(BaseModel):
     command: str
     payload: Optional[dict] = None
+
+
+class ActiveBabyUpdate(BaseModel):
+    """Set (or clear, with null) the baby this device is currently feeding."""
+    baby_id: Optional[int] = None

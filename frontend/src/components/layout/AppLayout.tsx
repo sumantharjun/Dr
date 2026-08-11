@@ -5,6 +5,7 @@ import MiniSidebar from "./MiniSidebar";
 import ToastContainer from "./ToastContainer";
 import ThemeToggle from "../ThemeToggle";
 import AlertBell from "./AlertBell";
+import BabySwitcher from "./BabySwitcher";
 import { useAuthStore } from "../../store/authStore";
 import { useAlertStore } from "../../store/alertStore";
 import { useThemeStore } from "../../store/themeStore";
@@ -19,6 +20,11 @@ export default function AppLayout() {
   const [deviceIds, setDeviceIds] = useState<number[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+
+  // Only Dashboard and Feeding scope their data to the selected baby. Showing
+  // the switcher elsewhere makes it look like a filter that does nothing.
+  // Settings doesn't need it either — it lists every baby at once.
+  const showBabySwitcher = ["/dashboard", "/feeding"].includes(location.pathname);
 
   // Close the mobile drawer whenever the route changes (e.g. back/forward
   // navigation, or a link tapped outside the sidebar).
@@ -68,6 +74,9 @@ export default function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0 pl-14 lg:pl-0">
         {/* Top header bar — theme toggle, visible on every page */}
         <header className="h-14 flex items-center gap-2 px-4 border-b border-gray-200 dark:border-gray-800 bg-white/70 dark:bg-gray-900/70 backdrop-blur sticky top-0 z-30">
+          {/* Left-aligned: it says what you're looking at, so it reads before
+              the page content rather than sitting with the utility icons. */}
+          {showBabySwitcher && <BabySwitcher />}
           <div className="flex-1" />
           <AlertBell />
           <ThemeToggle />

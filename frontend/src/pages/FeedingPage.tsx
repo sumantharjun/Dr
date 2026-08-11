@@ -12,6 +12,7 @@ import { Device, FeedingAnalytics, FeedingLog, FeedingSchedule, MilkType } from 
 import { format, formatDistanceToNow } from "date-fns";
 import { useToastStore } from "../store/toastStore";
 import { useWsEventStore } from "../store/wsEventStore";
+import { useBabyStore, useSelectedBaby } from "../store/babyStore";
 
 /**
  * Single source for the milk-type options and their presentation — the form
@@ -34,6 +35,7 @@ export default function FeedingPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
+    baby_id: "",
     milk_consumed_ml: "",
     method: "manual",
     // Deliberately blank: milk type is required, and pre-selecting a value
@@ -48,6 +50,9 @@ export default function FeedingPage() {
   const [loadingLogs, setLoadingLogs] = useState(true);
 
   const { addToast } = useToastStore();
+  const babies = useBabyStore((s) => s.babies);
+  const selectedBabyId = useBabyStore((s) => s.selectedId);
+  const selectedBaby = useSelectedBaby();
   const weightReadings = useWsEventStore((s) => s.weightReadings);
   const lastFeedingEvent = useWsEventStore((s) => s.lastFeedingEvent);
 
@@ -58,16 +63,26 @@ export default function FeedingPage() {
   // initialised once at mount, so reusing that value would show whenever the
   // page happened to load rather than now.
   const openForm = useCallback(() => {
-    setForm((f) => ({ ...f, feed_time: toWire(new Date()) }));
+    setForm((f) => ({
+      ...f,
+      feed_time: toWire(new Date()),
+      // Default to whoever the header is showing — almost always right, and
+      // still changeable in the form.
+      baby_id: selectedBabyId ? String(selectedBabyId) : "",
+    }));
     setShowForm(true);
-  }, []);
+  }, [selectedBabyId]);
 
   const fetchAll = useCallback(() => {
-    api.get("/feeding/schedule").then((r) => setSchedule(r.data)).catch(() => {}).finally(() => setLoadingSchedule(false));
-    api.get("/feeding/analytics?days=7").then((r) => setAnalytics(r.data)).catch(() => {}).finally(() => setLoadingAnalytics(false));
-    api.get("/feeding/logs").then((r) => setLogs(r.data)).catch(() => {}).finally(() => setLoadingLogs(false));
+    if (selectedBabyId === null) return;
+    // Scoped to one baby throughout: twins are on independent schedules, and a
+    // combined intake chart or "next feed due" describes neither of them.
+    const forBaby = `baby_id=${selectedBabyId}`;
+    api.get(`/feeding/schedule?${forBaby}`).then((r) => setSchedule(r.data)).catch(() => {}).finally(() => setLoadingSchedule(false));
+    api.get(`/feeding/analytics?days=7&${forBaby}`).then((r) => setAnalytics(r.data)).catch(() => {}).finally(() => setLoadingAnalytics(false));
+    api.get(`/feeding/logs?${forBaby}`).then((r) => setLogs(r.data)).catch(() => {}).finally(() => setLoadingLogs(false));
     api.get("/devices/").then((r) => setDevices(r.data)).catch(() => {});
-  }, []);
+  }, [selectedBabyId]);
 
   useEffect(() => {
     fetchAll();
@@ -87,6 +102,7 @@ export default function FeedingPage() {
     setSubmitting(true);
     try {
       await api.post("/feeding/logs", {
+        baby_id: Number(form.baby_id),
         device_id: devices[0]?.id ?? null,
         milk_consumed_ml: form.milk_consumed_ml ? Number(form.milk_consumed_ml) : null,
         method: form.method,
@@ -99,6 +115,7 @@ export default function FeedingPage() {
       });
       setShowForm(false);
       setForm({
+        baby_id: selectedBabyId ? String(selectedBabyId) : "",
         milk_consumed_ml: "",
         method: "manual",
         milk_type: "",
@@ -126,7 +143,11 @@ export default function FeedingPage() {
       <div className="flex items-center justify-between gap-3 mb-6">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">Feeding</h1>
-          <p className="text-gray-500 text-sm mt-1">Track and monitor your baby's feeding</p>
+          <p className="text-gray-500 text-sm mt-1">
+            {babies.length > 1 && selectedBaby
+              ? `Tracking ${selectedBaby.name} — switch babies in the header.`
+              : "Track and monitor your baby's feeding"}
+          </p>
         </div>
         <button
           onClick={openForm}
@@ -252,6 +273,27 @@ export default function FeedingPage() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
             <h2 className="font-bold text-lg text-gray-900 mb-4">Log Feeding</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Only shown when there's an actual choice; with one baby the
+                  field would be a single-option select asking nothing. */}
+              {babies.length > 1 && (
+                <div>
+                  <label htmlFor="feed-baby" className="block text-sm font-medium text-gray-700 mb-1">
+                    Baby <span className="text-red-500" aria-hidden="true">*</span>
+                  </label>
+                  <select
+                    id="feed-baby"
+                    required
+                    value={form.baby_id}
+                    onChange={(e) => setForm({ ...form, baby_id: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  >
+                    <option value="" disabled>Select baby…</option>
+                    {babies.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
                 <DateTimeField

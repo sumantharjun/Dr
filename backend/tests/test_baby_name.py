@@ -64,24 +64,24 @@ def test_name_at_max_length_accepted(client, auth):
 def test_patch_cannot_blank_an_existing_name(client, auth):
     """The whole point of the change — a name, once set, can't be removed."""
     headers, _ = auth()
-    client.post("/baby/", headers=headers, json=_body(name="Aarav"))
-    r = client.patch("/baby/", headers=headers, json={"name": "   "})
+    baby_id = client.post("/baby/", headers=headers, json=_body(name="Aarav")).json()["id"]
+    r = client.patch(f"/baby/{baby_id}", headers=headers, json={"name": "   "})
     assert r.status_code == 422, r.text
-    assert client.get("/baby/", headers=headers).json()["name"] == "Aarav"
+    assert client.get("/baby/", headers=headers).json()[0]["name"] == "Aarav"
 
 
 def test_patch_can_rename(client, auth):
     headers, _ = auth()
-    client.post("/baby/", headers=headers, json=_body(name="Aarav"))
-    r = client.patch("/baby/", headers=headers, json={"name": "  Ishaan "})
+    baby_id = client.post("/baby/", headers=headers, json=_body(name="Aarav")).json()["id"]
+    r = client.patch(f"/baby/{baby_id}", headers=headers, json={"name": "  Ishaan "})
     assert r.status_code == 200, r.text
     assert r.json()["name"] == "Ishaan"
 
 
 def test_patch_omitting_name_leaves_it_alone(client, auth):
     headers, _ = auth()
-    client.post("/baby/", headers=headers, json=_body(name="Aarav"))
-    r = client.patch("/baby/", headers=headers, json={"weight_kg": 5.5})
+    baby_id = client.post("/baby/", headers=headers, json=_body(name="Aarav")).json()["id"]
+    r = client.patch(f"/baby/{baby_id}", headers=headers, json={"weight_kg": 5.5})
     assert r.status_code == 200, r.text
     assert r.json()["name"] == "Aarav"
     assert r.json()["weight_kg"] == 5.5
@@ -90,5 +90,5 @@ def test_patch_omitting_name_leaves_it_alone(client, auth):
 def test_get_always_returns_a_name(client, auth):
     headers, _ = auth()
     client.post("/baby/", headers=headers, json=_body(name="Aarav"))
-    body = client.get("/baby/", headers=headers).json()
+    body = client.get("/baby/", headers=headers).json()[0]
     assert isinstance(body["name"], str) and body["name"].strip()

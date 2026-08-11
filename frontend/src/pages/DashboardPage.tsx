@@ -5,7 +5,8 @@ import api from "../services/api";
 import { Device, FeedingSchedule, DeviceAlert } from "../types";
 import { formatDistanceToNow } from "date-fns";
 import { useAuthStore } from "../store/authStore";
-import { useBabyStore } from "../store/babyStore";
+import { useBabyStore, useSelectedBaby } from "../store/babyStore";
+import FeedingNowSelector from "../components/FeedingNowSelector";
 import Mascot from "../components/Mascot";
 
 interface MetricsSummary {
@@ -49,7 +50,8 @@ function StatCard({ icon: Icon, label, value, color, to }: {
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { baby } = useBabyStore();
+  const baby = useSelectedBaby();
+  const selectedBabyId = useBabyStore((s) => s.selectedId);
   const [devices, setDevices] = useState<Device[]>([]);
   const [schedule, setSchedule] = useState<FeedingSchedule | null>(null);
   const [alerts, setAlerts] = useState<DeviceAlert[]>([]);
@@ -63,10 +65,21 @@ export default function DashboardPage() {
   // stat card reads and which the retry interceptor can stall for seconds.
   useEffect(() => {
     api.get("/devices/").then((r) => setDevices(r.data)).catch(() => {}).finally(() => setLoadingDevices(false));
-    api.get("/feeding/schedule").then((r) => setSchedule(r.data)).catch(() => {}).finally(() => setLoadingSchedule(false));
     api.get("/alerts/").then((r) => setAlerts(r.data)).catch(() => {}).finally(() => setLoadingAlerts(false));
     api.get("/metrics/summary").then((r) => setMetrics(r.data)).catch(() => {});
   }, []);
+
+  // Re-fetched whenever the selected baby changes: twins are on independent
+  // schedules, so a combined "next feed due" would describe neither of them.
+  useEffect(() => {
+    if (selectedBabyId === null) return;
+    setLoadingSchedule(true);
+    api
+      .get(`/feeding/schedule?baby_id=${selectedBabyId}`)
+      .then((r) => setSchedule(r.data))
+      .catch(() => {})
+      .finally(() => setLoadingSchedule(false));
+  }, [selectedBabyId]);
 
   const device = devices[0] ?? null;
   const deviceLabel = !device
@@ -93,6 +106,11 @@ export default function DashboardPage() {
           </p>
         </div>
       </div>
+
+      <FeedingNowSelector
+        device={device}
+        onChange={(d) => setDevices((prev) => prev.map((x) => (x.id === d.id ? d : x)))}
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
