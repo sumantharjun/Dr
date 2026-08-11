@@ -6,7 +6,8 @@ from pydantic import BaseModel, field_validator
 from app.utils.timezone import now_ist
 
 VALID_GENDERS = {"male", "female"}
-VALID_THEMES = {"blue", "pink"}
+# NOTE: the app colour moved to users.theme_color — an account-level choice, no
+# longer derived from the baby. babies.theme_color remains in the DB but unused.
 
 # Upper bound on plausible age. Generous on purpose — the device is used well
 # past infancy for bottles and sterilising — but tight enough to catch a
@@ -41,7 +42,6 @@ class BabyCreate(BaseModel):
     # defaulting it would produce confidently wrong recommendations.
     date_of_birth: date
     weight_kg: float
-    theme_color: Optional[str] = None  # Defaults to gender-derived if omitted
 
     @field_validator("date_of_birth")
     @classmethod
@@ -62,13 +62,6 @@ class BabyCreate(BaseModel):
             raise ValueError("weight_kg must be between 0.5 and 30.0")
         return round(v, 2)
 
-    @field_validator("theme_color")
-    @classmethod
-    def validate_theme(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in VALID_THEMES:
-            raise ValueError(f"theme_color must be one of {sorted(VALID_THEMES)}")
-        return v
-
     @field_validator("name")
     @classmethod
     def validate_name(cls, v: str) -> str:
@@ -84,7 +77,6 @@ class BabyUpdate(BaseModel):
     # be backfilled from Settings without resending every other attribute.
     date_of_birth: Optional[date] = None
     weight_kg: Optional[float] = None
-    theme_color: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -110,13 +102,6 @@ class BabyUpdate(BaseModel):
             raise ValueError("weight_kg must be between 0.5 and 30.0")
         return None if v is None else round(v, 2)
 
-    @field_validator("theme_color")
-    @classmethod
-    def validate_theme(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in VALID_THEMES:
-            raise ValueError(f"theme_color must be one of {sorted(VALID_THEMES)}")
-        return v
-
 
 class BabyOut(BaseModel):
     id: int
@@ -128,7 +113,6 @@ class BabyOut(BaseModel):
     # has to compute it and the two can't drift.
     age_days: Optional[int]
     weight_kg: float
-    theme_color: str
     created_at: datetime
     updated_at: datetime
 

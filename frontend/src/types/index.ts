@@ -1,7 +1,24 @@
+/** App palettes, defined as [data-theme="…"] blocks in index.css. */
+export type ThemeColor = "green" | "blue" | "pink" | "lilac" | "peach" | "slate";
+
+export const THEME_COLORS: { value: ThemeColor; label: string; swatch: string }[] = [
+  // `swatch` is a literal hex of each palette's 500 shade — the picker has to
+  // render all six at once, so it can't use the `primary` CSS variables (those
+  // only ever hold the *active* theme).
+  { value: "green", label: "Green", swatch: "#2EA069" },
+  { value: "blue",  label: "Blue",  swatch: "#2FA8CB" },
+  { value: "pink",  label: "Pink",  swatch: "#DE4E8C" },
+  { value: "lilac", label: "Lilac", swatch: "#8363C4" },
+  { value: "peach", label: "Peach", swatch: "#D6692D" },
+  { value: "slate", label: "Slate", swatch: "#64748B" },
+];
+
 export interface User {
   id: number;
   email: string;
   full_name: string;
+  /** The parent's chosen app colour — an account preference, not per baby. */
+  theme_color: ThemeColor;
   created_at: string;
 }
 
@@ -130,7 +147,6 @@ export interface Baby {
   /** Age in whole days, derived server-side from date_of_birth. */
   age_days: number | null;
   weight_kg: number;
-  theme_color: "blue" | "pink";
   created_at: string;
   updated_at: string;
 }

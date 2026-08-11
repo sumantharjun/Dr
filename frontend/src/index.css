@@ -3,14 +3,36 @@
 @tailwind utilities;
 
 /*
- * Theme palettes — switch by setting `data-theme="blue"` or `data-theme="pink"`
- * on the <html> element (see src/main.tsx and src/store/themeStore.ts).
+ * Theme palettes — switch by setting `data-theme="<name>"` on <html>
+ * (see src/main.tsx). The colour is the user's own choice, stored on
+ * users.theme_color; it is NOT derived from the baby's gender.
  *
- * Blue palette is anchored on the UNOSOL brochure colour #B2E6F3.
- * Pink palette is a tonal counterpart for girl theme.
+ * Each palette is pastel at the light end (50–300, used for tints and
+ * borders) but stays deep at 600–900. That's not a style preference:
+ * `bg-primary-600` is the fill behind WHITE text on every primary button, so a
+ * genuinely pastel 600 would drop the label under WCAG AA. Every 600 and 700
+ * here is measured at >= 4.5:1 against white.
+ *
+ * Blue's 200 remains the UNOSOL brochure colour #B2E6F3. Its 600 was 33 138 175,
+ * which measured 3.95:1 with white text and had been failing AA on every primary
+ * button; it is deepened to 28 120 152 (5.01:1). Pink is unchanged.
  */
 @layer base {
+  /* Default: pastel green. */
   :root,
+  [data-theme="green"] {
+    --p-50:  240 250 244;
+    --p-100: 219 244 228;
+    --p-200: 178 231 203;  /* the pastel green the app reads as */
+    --p-300: 130 210 168;
+    --p-400: 82  186 133;
+    --p-500: 46  160 105;
+    --p-600: 30  126 82;   /* 5.05:1 with white */
+    --p-700: 24  100 66;   /* 7.14:1 */
+    --p-800: 22  82  55;
+    --p-900: 19  66  45;
+  }
+
   [data-theme="blue"] {
     --p-50:  239 249 253;
     --p-100: 219 240 248;
@@ -18,8 +40,8 @@
     --p-300: 132 211 232;
     --p-400: 86  190 219;
     --p-500: 47  168 203;
-    --p-600: 33  138 175;
-    --p-700: 27  108 138;
+    --p-600: 28  120 152;  /* 5.01:1 with white (was 3.95:1) */
+    --p-700: 27  108 138;  /* 5.90:1 */
     --p-800: 26  86  110;
     --p-900: 24  71  90;
   }
@@ -31,10 +53,49 @@
     --p-300: 245 161 196;
     --p-400: 236 113 166;
     --p-500: 222 78  140;
-    --p-600: 199 54  117;
-    --p-700: 161 38  93;
+    --p-600: 199 54  117;  /* 4.98:1 */
+    --p-700: 161 38  93;   /* 7.12:1 */
     --p-800: 131 33  79;
     --p-900: 109 28  67;
+  }
+
+  [data-theme="lilac"] {
+    --p-50:  247 244 252;
+    --p-100: 237 231 249;
+    --p-200: 218 208 243;
+    --p-300: 191 174 232;
+    --p-400: 160 134 216;
+    --p-500: 131 99  196;
+    --p-600: 104 71  166;  /* 6.91:1 */
+    --p-700: 84  56  135;  /* 9.16:1 */
+    --p-800: 68  46  110;
+    --p-900: 56  38  90;
+  }
+
+  [data-theme="peach"] {
+    --p-50:  254 246 240;
+    --p-100: 253 234 221;
+    --p-200: 250 212 186;
+    --p-300: 244 180 137;
+    --p-400: 234 145 89;
+    --p-500: 214 105 45;
+    --p-600: 180 82  28;   /* 5.04:1 */
+    --p-700: 146 66  23;   /* 6.97:1 */
+    --p-800: 119 54  19;
+    --p-900: 98  44  16;
+  }
+
+  [data-theme="slate"] {
+    --p-50:  244 246 248;
+    --p-100: 231 235 240;
+    --p-200: 209 216 225;
+    --p-300: 176 187 201;
+    --p-400: 133 148 168;
+    --p-500: 100 116 139;
+    --p-600: 71  85  105;  /* 7.58:1 */
+    --p-700: 55  65  81;   /* 10.31:1 */
+    --p-800: 43  52  65;
+    --p-900: 34  42  53;
   }
 
   body {
@@ -77,6 +138,16 @@
 .dark .text-gray-600 { color: #b0b7c3; }
 .dark .text-gray-500 { color: #9aa3b2; }
 .dark .text-gray-400 { color: #7b8494; }
+
+/* Brand text on dark surfaces.
+   The `primary` scale is chosen for dark-on-light: primary-700 measures 2.16:1
+   against the dark card background, well under AA. Remapping the two shades
+   actually used as text to their light-end counterparts fixes every page at
+   once, for all six palettes, without touching the palettes themselves.
+   Backgrounds (bg-primary-600) are deliberately NOT remapped — those carry
+   white text and are already verified. */
+.dark .text-primary-700 { color: rgb(var(--p-300)); }
+.dark .text-primary-600 { color: rgb(var(--p-300)); }
 
 /* Borders */
 .dark .border-gray-300 { border-color: #3a4456; }

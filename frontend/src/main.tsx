@@ -3,18 +3,18 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
-// Apply persisted theme as early as possible to avoid a flash of the wrong palette.
+// Apply the account's palette before first paint, or the app renders a frame in
+// the default colour and visibly flips. Read straight from localStorage rather
+// than through the store, which hasn't initialised this early.
 try {
-  const raw = localStorage.getItem("baby");
-  if (raw) {
-    const baby = JSON.parse(raw);
-    const color = baby?.theme_color === "pink" ? "pink" : "blue";
-    document.documentElement.setAttribute("data-theme", color);
-  } else {
-    document.documentElement.setAttribute("data-theme", "blue");
-  }
+  const stored = localStorage.getItem("app_theme_color");
+  const valid = ["green", "blue", "pink", "lilac", "peach", "slate"];
+  document.documentElement.setAttribute(
+    "data-theme",
+    stored && valid.includes(stored) ? stored : "green",
+  );
 } catch {
-  document.documentElement.setAttribute("data-theme", "blue");
+  document.documentElement.setAttribute("data-theme", "green");
 }
 
 // Resolve light/dark before first paint (no flash): time-based schedule

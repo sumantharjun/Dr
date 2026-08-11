@@ -10,7 +10,6 @@ export interface Baby {
   /** Age in whole days, derived server-side from date_of_birth. */
   age_days: number | null;
   weight_kg: number;
-  theme_color: "blue" | "pink";
   created_at: string;
   updated_at: string;
 }
@@ -18,43 +17,27 @@ export interface Baby {
 interface BabyState {
   baby: Baby | null;
   setBaby: (baby: Baby | null) => void;
-  applyTheme: (color: "blue" | "pink") => void;
-}
-
-function applyHtmlTheme(color: "blue" | "pink") {
-  if (typeof document !== "undefined") {
-    document.documentElement.setAttribute("data-theme", color);
-  }
 }
 
 function loadBaby(): Baby | null {
   try {
     const raw = localStorage.getItem("baby");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Baby;
-    applyHtmlTheme(parsed.theme_color);
-    return parsed;
+    return raw ? (JSON.parse(raw) as Baby) : null;
   } catch {
     return null;
   }
 }
 
+/**
+ * The baby profile. Note it no longer carries the app colour — that moved to
+ * the user (see services/theme.ts and store/authStore.ts), because the palette
+ * is a free choice for the account rather than something derived from a baby.
+ */
 export const useBabyStore = create<BabyState>((set) => ({
   baby: loadBaby(),
   setBaby: (baby) => {
-    if (baby) {
-      localStorage.setItem("baby", JSON.stringify(baby));
-      applyHtmlTheme(baby.theme_color);
-    } else {
-      localStorage.removeItem("baby");
-      applyHtmlTheme("blue"); // Sleeping_Bear_Mascot / pre-login default
-    }
+    if (baby) localStorage.setItem("baby", JSON.stringify(baby));
+    else localStorage.removeItem("baby");
     set({ baby });
-  },
-  applyTheme: (color) => {
-    applyHtmlTheme(color);
-    set((s) =>
-      s.baby ? { baby: { ...s.baby, theme_color: color } } : s
-    );
   },
 }));

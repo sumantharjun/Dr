@@ -10,8 +10,10 @@ from app.utils.dependencies import get_current_user
 router = APIRouter(prefix="/baby", tags=["baby"])
 
 
-def _default_theme_for_gender(gender: str) -> str:
-    return "blue" if gender == "male" else "pink"
+# The app colour is an account-level preference on the user, chosen freely in
+# Settings (PATCH /auth/me/preferences). It used to be derived here from the
+# baby's gender; the client asked for a free choice instead, and with twins
+# there is no per-baby answer anyway. babies.theme_color is now unused.
 
 
 @router.get("/", response_model=BabyOut)
@@ -43,7 +45,6 @@ def create_baby(
         gender=body.gender,
         date_of_birth=body.date_of_birth,
         weight_kg=body.weight_kg,
-        theme_color=body.theme_color or _default_theme_for_gender(body.gender),
     )
     db.add(baby)
     db.commit()
@@ -68,8 +69,6 @@ def update_baby(
         baby.date_of_birth = body.date_of_birth
     if body.weight_kg is not None:
         baby.weight_kg = body.weight_kg
-    if body.theme_color is not None:
-        baby.theme_color = body.theme_color
     db.commit()
     db.refresh(baby)
     return baby

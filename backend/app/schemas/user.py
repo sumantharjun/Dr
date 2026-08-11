@@ -1,4 +1,6 @@
 from datetime import datetime
+from typing import Optional
+
 from pydantic import BaseModel, EmailStr, field_validator
 
 MIN_PASSWORD_LENGTH = 8
@@ -81,13 +83,29 @@ class ChangePassword(BaseModel):
         return v
 
 
+VALID_THEME_COLORS = {"green", "blue", "pink", "lilac", "peach", "slate"}
+
+
 class UserOut(BaseModel):
     id: int
     email: str
     full_name: str
+    theme_color: str
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class UserPreferences(BaseModel):
+    """Account-level display preferences. Fields omitted are left unchanged."""
+    theme_color: Optional[str] = None
+
+    @field_validator("theme_color")
+    @classmethod
+    def validate_theme_color(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_THEME_COLORS:
+            raise ValueError(f"theme_color must be one of {sorted(VALID_THEME_COLORS)}")
+        return v
 
 
 class Token(BaseModel):

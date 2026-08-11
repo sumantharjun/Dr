@@ -8,6 +8,7 @@ import {
   setStoredUser,
   updateToken,
 } from "../services/tokenStorage";
+import { applyTheme, clearStoredTheme, DEFAULT_THEME } from "../services/theme";
 
 interface AuthState {
   user: User | null;
@@ -42,16 +43,24 @@ export const useAuthStore = create<AuthState>((set) => ({
     } else {
       setSession(token, user, remember);
     }
+    // Every auth response carries the account's colour, so signing in on a new
+    // device picks up the right palette immediately.
+    if (user.theme_color) applyTheme(user.theme_color);
     set({ user, token });
   },
 
   setUser: (user) => {
     setStoredUser(user);
+    if (user.theme_color) applyTheme(user.theme_color);
     set({ user });
   },
 
   logout: () => {
     clearSession();
+    // Back to the default palette — the next person to sign in on this device
+    // shouldn't inherit the previous account's colour.
+    clearStoredTheme();
+    applyTheme(DEFAULT_THEME);
     set({ user: null, token: null });
   },
 }));

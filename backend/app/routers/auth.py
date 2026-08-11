@@ -18,6 +18,7 @@ from app.schemas.user import (
     UserCreate,
     UserLogin,
     UserOut,
+    UserPreferences,
 )
 from app.services import oauth_google
 from app.utils.dependencies import get_current_user, get_session_is_remembered
@@ -184,6 +185,20 @@ def google_sign_in(body: GoogleSignIn, request: Request, db: Session = Depends(g
 
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.patch("/me/preferences", response_model=UserOut)
+def update_preferences(
+    body: UserPreferences,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update account-level display preferences (currently just the theme)."""
+    if body.theme_color is not None:
+        current_user.theme_color = body.theme_color
+    db.commit()
+    db.refresh(current_user)
     return current_user
 
 

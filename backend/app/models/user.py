@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Column, DateTime, Enum, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -19,6 +19,15 @@ class User(Base):
     # this value at issue time; get_current_user rejects tokens whose marker no
     # longer matches — so a password change/reset invalidates all prior sessions.
     password_changed_at = Column(DateTime, nullable=True)
+    # The parent's chosen app colour. An account-level preference, deliberately
+    # not derived from the baby's gender and not stored per baby — one account
+    # is one app, and with twins there is no per-baby answer.
+    theme_color = Column(
+        Enum("green", "blue", "pink", "lilac", "peach", "slate"),
+        nullable=False,
+        default="green",
+        server_default="green",
+    )
     created_at = Column(DateTime, default=now_ist)
 
     auth_identities = relationship(

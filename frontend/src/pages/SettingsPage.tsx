@@ -1,22 +1,26 @@
 import { useState, useEffect, FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Palette, Baby as BabyIcon, Cpu, ChevronRight } from "lucide-react";
+import { Palette, Baby as BabyIcon, Cpu, ChevronRight, Check } from "lucide-react";
+import { clsx } from "clsx";
 import api from "../services/api";
 import Mascot from "../components/Mascot";
 import { useBabyStore } from "../store/babyStore";
+import { useAuthStore } from "../store/authStore";
 import { useToastStore } from "../store/toastStore";
 import { ageDaysFromISO, describeAge, earliestDobISO, todayISO } from "../services/age";
-import type { Device } from "../types";
+import { applyTheme as applyAppTheme, DEFAULT_THEME } from "../services/theme";
+import { THEME_COLORS, type Device, type ThemeColor } from "../types";
 
 export default function SettingsPage() {
-  const { baby, setBaby, applyTheme } = useBabyStore();
+  const { baby, setBaby } = useBabyStore();
+  const { user, setUser } = useAuthStore();
   const { addToast } = useToastStore();
 
   const [name, setName] = useState(baby?.name ?? "");
   const [gender, setGender] = useState<"male" | "female">(baby?.gender ?? "male");
   const [dob, setDob] = useState(baby?.date_of_birth ?? "");
   const [weight, setWeight] = useState(baby ? String(baby.weight_kg) : "");
-  const [theme, setThemeLocal] = useState<"blue" | "pink">(baby?.theme_color ?? "blue");
+  const [theme, setThemeLocal] = useState<ThemeColor>(user?.theme_color ?? DEFAULT_THEME);
   const [saving, setSaving] = useState(false);
   const [device, setDevice] = useState<Device | null>(null);
 
@@ -37,9 +41,9 @@ export default function SettingsPage() {
     );
   }
 
-  function pickTheme(color: "blue" | "pink") {
+  function pickTheme(color: ThemeColor) {
     setThemeLocal(color);
-    applyTheme(color); // instant preview
+    applyAppTheme(color); // instant preview; persisted on save below
   }
 
   async function handleSave(e: FormEvent) {
@@ -67,11 +71,23 @@ export default function SettingsPage() {
         // is no way to clear a DOB back to unknown once set.
         ...(dob ? { date_of_birth: dob } : {}),
         weight_kg: w,
-        theme_color: theme,
       });
       setBaby(data);
+
+      // The colour belongs to the account, so it saves separately from the baby.
+      if (theme !== user?.theme_color) {
+        const { data: updatedUser } = await api.patch("/auth/me/preferences", {
+          theme_color: theme,
+        });
+        setUser(updatedUser);
+      }
       addToast("Settings saved", "success");
     } catch (err: any) {
+      // Undo the instant preview — otherwise the app keeps a colour that was
+      // never persisted and reverts confusingly on the next reload.
+      const saved = user?.theme_color ?? DEFAULT_THEME;
+      setThemeLocal(saved);
+      applyAppTheme(saved);
       addToast(err.response?.data?.detail || "Failed to save", "error");
     } finally {
       setSaving(false);
@@ -95,39 +111,40 @@ export default function SettingsPage() {
             <h2 className="font-semibold text-gray-900">App theme</h2>
           </div>
           <p className="text-sm text-gray-500 mb-4">
-            Choose the theme colour.
+            Pick the colour you'd like across the app.
           </p>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => pickTheme("blue")}
-              className={`border-2 rounded-2xl p-4 flex items-center gap-3 transition-all ${
-                theme === "blue"
-                  ? "border-sky-brand bg-sky-brand/20 dark:bg-sky-brand/10 ring-2 ring-sky-brand/40"
-                  : "border-gray-200 hover:border-gray-300 bg-white"
-              }`}
-            >
-              <span className="w-8 h-8 rounded-full bg-sky-brand" />
-              <div className="text-left">
-                <p className="text-sm font-semibold text-gray-800">Blue</p>
-                {/* <p className="text-xs text-gray-500">Boy default</p> */}
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => pickTheme("pink")}
-              className={`border-2 rounded-2xl p-4 flex items-center gap-3 transition-all ${
-                theme === "pink"
-                  ? "border-pink-300 dark:border-pink-500/50 bg-pink-50 dark:bg-pink-500/15 ring-2 ring-pink-200"
-                  : "border-gray-200 hover:border-gray-300 bg-white"
-              }`}
-            >
-              <span className="w-8 h-8 rounded-full bg-pink-300" />
-              <div className="text-left">
-                <p className="text-sm font-semibold text-gray-800">Pink</p>
-                {/* <p className="text-xs text-gray-500">Girl default</p> */}
-              </div>
-            </button>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+            {THEME_COLORS.map((t) => {
+              const active = theme === t.value;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => pickTheme(t.value)}
+                  aria-pressed={active}
+                  title={t.label}
+                  className={clsx(
+                    "border-2 rounded-2xl p-3 flex flex-col items-center gap-2 transition-all",
+                    active
+                      ? "border-primary-500 bg-primary-50 dark:bg-primary-500/15 ring-2 ring-primary-300"
+                      : "border-gray-200 hover:border-gray-300 bg-white",
+                  )}
+                >
+                  {/* Literal hex, not a `primary` class: all six swatches are on
+                      screen at once, and the CSS variables only ever hold the
+                      currently-active palette. */}
+                  <span
+                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: t.swatch }}
+                  >
+                    {/* Non-colour cue as well as the ring — colour alone can't
+                        carry state, least of all in a colour picker (WCAG 1.4.1). */}
+                    {active && <Check className="w-4 h-4 text-white" />}
+                  </span>
+                  <span className="text-xs font-medium text-gray-700">{t.label}</span>
+                </button>
+              );
+            })}
           </div>
         </section>
 
