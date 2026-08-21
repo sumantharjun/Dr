@@ -44,6 +44,7 @@ export default function MiniSidebar({ onExpand }: MiniSidebarProps) {
           <NavLink
             key={to}
             to={to}
+            data-tour={`mininav-${to.slice(1)}`}
             aria-label={label}
             className={({ isActive }) =>
               clsx(

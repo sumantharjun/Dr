@@ -70,6 +70,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           <NavLink
             key={to}
             to={to}
+            data-tour={`nav-${to.slice(1)}`}
             onClick={onClose}
             className={({ isActive }) =>
               clsx(

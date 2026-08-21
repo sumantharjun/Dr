@@ -28,6 +28,11 @@ class User(Base):
         default="green",
         server_default="green",
     )
+    # When the parent finished (or skipped) the guided tour. NULL means they
+    # haven't seen it, which is what triggers it on first login. Stored on the
+    # account rather than in localStorage so signing in on a second device
+    # doesn't replay it.
+    tour_completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=now_ist)
 
     auth_identities = relationship(

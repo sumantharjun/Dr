@@ -6,6 +6,7 @@ import ToastContainer from "./ToastContainer";
 import ThemeToggle from "../ThemeToggle";
 import AlertBell from "./AlertBell";
 import BabySwitcher from "./BabySwitcher";
+import TourGuide from "../TourGuide";
 import { useAuthStore } from "../../store/authStore";
 import { useAlertStore } from "../../store/alertStore";
 import { useThemeStore } from "../../store/themeStore";
@@ -85,6 +86,9 @@ export default function AppLayout() {
           <Outlet />
         </main>
       </div>
+      {/* Mounted in the shell so it survives navigation — the tour spans
+          several pages and must keep its place as the router changes. */}
+      <TourGuide />
       <ToastContainer />
     </div>
   );

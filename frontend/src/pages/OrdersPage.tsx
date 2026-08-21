@@ -144,10 +144,11 @@ export default function OrdersPage() {
           <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
           <p className="text-gray-500 text-sm mt-1">Shop for cleaning supplies and accessories</p>
         </div>
-        <div className="flex gap-2 flex-shrink-0 items-center">
+        <div className="flex gap-2 flex-shrink-0 items-center" data-tour="orders-tabs">
           <label className="sr-only" htmlFor="currency-select">Display currency</label>
           <select
             id="currency-select"
+            data-tour="orders-currency"
             value={currency}
             onChange={(e) => setCurrency(e.target.value as Currency)}
             title="Change display currency — orders are still charged in INR"

@@ -91,7 +91,7 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-      <div className="mb-6 flex items-center gap-4">
+      <div className="mb-6 flex items-center gap-4" data-tour="dashboard-greeting">
         <Mascot variant="auto" size={72} className="flex-shrink-0 hidden sm:block" />
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
@@ -113,7 +113,7 @@ export default function DashboardPage() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8" data-tour="dashboard-stats">
         {loadingDevices ? (
           <SkeletonCard />
         ) : (
@@ -202,7 +202,7 @@ export default function DashboardPage() {
       )}
 
       {/* Device & Alert panels */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" data-tour="dashboard-device">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-gray-900">Device</h2>
@@ -243,7 +243,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-5" data-tour="dashboard-alerts">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-gray-900">Recent Alerts</h2>
             <Link to="/alerts" className="text-sm text-primary-600 hover:underline">View all</Link>

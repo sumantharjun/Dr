@@ -1,6 +1,6 @@
 import { useState, useEffect, FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Palette, Baby as BabyIcon, Cpu, ChevronRight, Check, Plus } from "lucide-react";
+import { Palette, Baby as BabyIcon, Cpu, ChevronRight, Check, Plus, PlayCircle } from "lucide-react";
 import { clsx } from "clsx";
 import api from "../services/api";
 import BabyProfileFields, { BabyForm, formFor, isDirty } from "../components/BabyProfileFields";
@@ -144,22 +144,47 @@ export default function SettingsPage() {
     }
   }
 
+  // Replaying is just clearing the flag: TourGuide watches tour_completed_at and
+  // starts itself when it goes null, but only on the page the first step lives
+  // on — hence the navigate.
+  async function replayTour() {
+    try {
+      const { data } = await api.post("/auth/me/tour?completed=false");
+      setUser(data);
+      navigate("/dashboard");
+    } catch {
+      addToast("Couldn't start the tour", "error");
+    }
+  }
+
   const multiple = babies.length > 1;
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-500 text-sm mt-1">
-          {/* Not "{babies}'s" — that pluralises into "babies's". */}
-          {multiple
-            ? "Manage your babies' profiles and app theme."
-            : "Manage your baby's profile and app theme."}
-        </p>
+      {/* Replay sits in the header rather than in a section of its own: it's a
+          one-off action, not a setting, so it doesn't earn a full-width card. */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+          <p className="text-gray-500 text-sm mt-1">
+            {/* Not "{babies}'s" — that pluralises into "babies's". */}
+            {multiple
+              ? "Manage your babies' profiles and app theme."
+              : "Manage your baby's profile and app theme."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={replayTour}
+          title="Walk through the app again, one section at a time"
+          className="flex items-center gap-1.5 text-sm font-medium text-primary-700 border border-primary-300 hover:bg-primary-50 rounded-lg px-3 py-1.5 transition-colors flex-shrink-0"
+        >
+          <PlayCircle className="w-4 h-4" /> Replay tour
+        </button>
       </div>
 
       {/* Theme — an account-level preference, so it sits above the babies. */}
-      <section className="bg-white rounded-2xl border border-gray-200 p-5 mb-6">
+      <section className="bg-white rounded-2xl border border-gray-200 p-5 mb-6" data-tour="settings-theme">
         <div className="flex items-center gap-2 mb-4">
           <Palette className="w-5 h-5 text-primary-600" />
           <h2 className="font-semibold text-gray-900">App theme</h2>
@@ -205,7 +230,7 @@ export default function SettingsPage() {
       {/* Every baby in ONE section with ONE Save — two Save buttons on a single
           page left it ambiguous which one applied to what. */}
       <form onSubmit={handleSave}>
-        <section className="bg-white rounded-2xl border border-gray-200 p-5">
+        <section className="bg-white rounded-2xl border border-gray-200 p-5" data-tour="settings-babies">
           <div className="flex items-center gap-2 mb-5 flex-wrap">
             <BabyIcon className="w-5 h-5 text-primary-600" />
             <h2 className="font-semibold text-gray-900">
@@ -278,7 +303,7 @@ export default function SettingsPage() {
       </form>
 
       {/* Device card */}
-      <section className="bg-white rounded-2xl border border-gray-200 p-5 mt-6">
+      <section className="bg-white rounded-2xl border border-gray-200 p-5 mt-6" data-tour="settings-device">
         <div className="flex items-center gap-2 mb-4">
           <Cpu className="w-5 h-5 text-primary-600" />
           <h2 className="font-semibold text-gray-900">Device</h2>

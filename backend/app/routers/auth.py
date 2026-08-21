@@ -202,6 +202,24 @@ def update_preferences(
     return current_user
 
 
+@router.post("/me/tour", response_model=UserOut)
+def set_tour_state(
+    completed: bool = True,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Mark the guided tour as seen, or clear it to replay.
+
+    Called when the parent finishes or skips the tour; `completed=false` resets
+    it, which is what the "Replay tour" control in Settings uses.
+    """
+    current_user.tour_completed_at = now_ist() if completed else None
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
 @router.post("/change-password", status_code=status.HTTP_200_OK)
 def change_password(
     body: ChangePassword,

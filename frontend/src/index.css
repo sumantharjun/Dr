@@ -198,3 +198,22 @@
 .dark textarea::placeholder {
   color: #6b7280;
 }
+
+/* Guided tour — hand-off steps.
+   On a step where the parent must click a real nav item, Joyride's overlay
+   would swallow the click. Joyride does have `spotlightClicks`, but it only
+   opens the hole from a mousemove listener, so it never engages on touch; its
+   per-step `styles.overlay` override is also ignored. Disabling pointer capture
+   from CSS is deterministic and works for finger and cursor alike, while
+   keeping the dimming and the spotlight ring that a plain `disableOverlay`
+   would throw away. The class is toggled in components/TourGuide.tsx. */
+.tour-active .react-joyride__overlay {
+  /* Explicitly re-assert blocking. Joyride's own pointer-events flag sticks
+     "off" after a hand-off, which silently unlocked the rest of the app for
+     every later step. */
+  pointer-events: auto !important;
+}
+/* Declared after .tour-active so it wins when both classes are present. */
+.tour-handoff .react-joyride__overlay {
+  pointer-events: none !important;
+}

@@ -79,6 +79,7 @@ export default function ActivityPage() {
         </button>
       </div>
 
+      <div data-tour="activity-feed">
       {/* No device */}
       {!device && (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -171,6 +172,7 @@ export default function ActivityPage() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

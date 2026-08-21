@@ -91,6 +91,9 @@ class UserOut(BaseModel):
     email: str
     full_name: str
     theme_color: str
+    # Null until the guided tour is finished or skipped — the client uses this
+    # to decide whether to start it.
+    tour_completed_at: Optional[datetime]
     created_at: datetime
 
     model_config = {"from_attributes": True}

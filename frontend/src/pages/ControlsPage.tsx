@@ -563,9 +563,12 @@ export default function ControlsPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* The tour covers wash, UV and dispensing in one step, so it spotlights
+          the whole grid — highlighting a single card while the copy described
+          all three read as pointing at the wrong thing. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" data-tour="controls-actions">
         {/* Washing */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-5" data-tour="controls-wash">
           <div className="flex items-center gap-2 mb-4">
             <Settings2 className="w-5 h-5 text-primary-600" />
             <h2 className="font-semibold text-gray-900">Washing Cycle</h2>
@@ -609,6 +612,7 @@ export default function ControlsPage() {
             onClick={() => setConfirming("uv")}
             disabled={!selectedDevice || uvLoading || uvProg?.status === "started"}
             title="Send a UV sterilization start command to the device"
+            data-tour="controls-uv"
             // Same theme palette as every other action button. Outlined rather
             // than filled so "Start Wash Cycle" above stays the card's primary
             // action — the difference now reads as hierarchy, not as an
@@ -624,7 +628,7 @@ export default function ControlsPage() {
         </div>
 
         {/* Milk Dispense */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-5" data-tour="controls-dispense">
           <div className="flex items-center gap-2 mb-4">
             <Thermometer className="w-5 h-5 text-primary-600" />
             <h2 className="font-semibold text-gray-900">Milk Dispensing</h2>

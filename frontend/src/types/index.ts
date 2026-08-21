@@ -19,6 +19,8 @@ export interface User {
   full_name: string;
   /** The parent's chosen app colour — an account preference, not per baby. */
   theme_color: ThemeColor;
+  /** Null until the guided tour is finished or skipped; drives first-run onboarding. */
+  tour_completed_at: string | null;
   created_at: string;
 }
 

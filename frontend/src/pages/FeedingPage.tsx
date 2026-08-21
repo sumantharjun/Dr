@@ -151,6 +151,7 @@ export default function FeedingPage() {
         </div>
         <button
           onClick={openForm}
+          data-tour="feeding-log-button"
           className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors flex-shrink-0 whitespace-nowrap"
         >
           <Plus className="w-4 h-4" /> Log Feeding
@@ -179,7 +180,7 @@ export default function FeedingPage() {
         </div>
       )}
       {!loadingSchedule && schedule && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6" data-tour="feeding-schedule">
           <ScheduleCard
             icon={Droplets}
             label="Last Feed"
@@ -214,7 +215,7 @@ export default function FeedingPage() {
       )}
 
       {/* Analytics charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6" data-tour="feeding-charts">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-semibold text-gray-900 mb-4">Daily Milk Intake (ml) — Last 7 Days</h2>
           {loadingAnalytics ? (
@@ -385,7 +386,7 @@ export default function FeedingPage() {
       )}
 
       {/* Feeding history table */}
-      <div className="bg-white rounded-xl border border-gray-200">
+      <div className="bg-white rounded-xl border border-gray-200" data-tour="feeding-history">
         <div className="px-5 py-4 border-b border-gray-200">
           <h2 className="font-semibold text-gray-900">Feeding History</h2>
         </div>
