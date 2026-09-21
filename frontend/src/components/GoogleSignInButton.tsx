@@ -72,11 +72,20 @@ export default function GoogleSignInButton({
   const { setAuth } = useAuthStore();
   const [unavailable, setUnavailable] = useState(false);
 
-  // `remember` is read inside Google's callback, which is registered once. A
-  // ref keeps that callback reading the current value instead of the value
-  // captured when the button was first rendered.
+  // Everything the callback reads goes through a ref, because the callback is
+  // registered with Google exactly once. A ref keeps it reading current values
+  // instead of the ones captured when the button first rendered — and, just as
+  // importantly, keeps these props out of the effect's dependencies. Callers
+  // pass inline arrows (`onSuccess={() => navigate(...)}`), so depending on
+  // them re-ran this effect on every keystroke, re-calling initialize() and
+  // renderButton() each time. That is what GSI warns about with
+  // "initialize() is called multiple times".
   const rememberRef = useRef(remember);
   rememberRef.current = remember;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
 
   useEffect(() => {
     if (!CLIENT_ID) return;
@@ -88,24 +97,24 @@ export default function GoogleSignInButton({
         window.google.accounts.id.initialize({
           client_id: CLIENT_ID,
           callback: async (resp: { credential?: string }) => {
-            if (!resp.credential) return onError("Google sign-in was cancelled.");
+            if (!resp.credential) return onErrorRef.current("Google sign-in was cancelled.");
             try {
               const { data } = await api.post("/auth/google", {
                 credential: resp.credential,
                 remember_me: rememberRef.current,
               });
               setAuth(data.user as User, data.access_token, rememberRef.current);
-              onSuccess();
+              onSuccessRef.current();
             } catch (err: unknown) {
               const status = (err as { response?: { status?: number } })?.response?.status;
               const detail = (err as { response?: { data?: { detail?: string } } })
                 ?.response?.data?.detail;
               if (status === 401) {
-                onError(detail || "Google couldn't verify that account.");
+                onErrorRef.current(detail || "Google couldn't verify that account.");
               } else if (status === 503) {
-                onError("Google sign-in isn't available right now.");
+                onErrorRef.current("Google sign-in isn't available right now.");
               } else {
-                onError(detail || "Couldn't sign in with Google. Please try again.");
+                onErrorRef.current(detail || "Couldn't sign in with Google. Please try again.");
               }
             }
           },
@@ -127,7 +136,8 @@ export default function GoogleSignInButton({
     return () => {
       cancelled = true;
     };
-  }, [setAuth, onError, onSuccess]);
+    // Mount-only: every changing value the effect uses is read through a ref.
+  }, [setAuth]);
 
   if (!CLIENT_ID) return null;
 

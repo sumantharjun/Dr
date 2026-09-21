@@ -36,12 +36,27 @@ interface BabyState {
   clear: () => void;
 }
 
-function read<T>(key: string, fallback: T): T {
+/**
+ * Coerce an API payload or cached value into a baby list.
+ *
+ * The pre-multi-baby backend returned a single BabyOut object from GET /baby/,
+ * and that build cached the same object under the "babies" key. Either one
+ * reaching the store unchecked means `babies.find(...)` in the header throws
+ * "find is not a function" and the error boundary swallows the entire app, so
+ * every entry point funnels through here.
+ */
+export function asBabyList(value: unknown): Baby[] {
+  if (Array.isArray(value)) return value as Baby[];
+  if (value && typeof value === "object" && "id" in value) return [value as Baby];
+  return [];
+}
+
+function readBabies(): Baby[] {
   try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
+    const raw = localStorage.getItem(BABIES_KEY);
+    return raw ? asBabyList(JSON.parse(raw)) : [];
   } catch {
-    return fallback;
+    return [];
   }
 }
 
@@ -72,16 +87,17 @@ function resolveSelection(babies: Baby[], current: number | null): number | null
  * schedules. The selection here is what every scoped request keys on.
  */
 export const useBabyStore = create<BabyState>((set, get) => {
-  const babies = read<Baby[]>(BABIES_KEY, []);
+  const babies = readBabies();
   const storedId = Number(localStorage.getItem(SELECTED_KEY));
   return {
     babies,
     selectedId: resolveSelection(babies, Number.isFinite(storedId) && storedId ? storedId : null),
 
     setBabies: (next) => {
-      const selectedId = resolveSelection(next, get().selectedId);
-      persist(next, selectedId);
-      set({ babies: next, selectedId });
+      const list = asBabyList(next);
+      const selectedId = resolveSelection(list, get().selectedId);
+      persist(list, selectedId);
+      set({ babies: list, selectedId });
     },
 
     selectBaby: (id) => {

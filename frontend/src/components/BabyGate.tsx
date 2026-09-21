@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import api from "../services/api";
 import { useAuthStore } from "../store/authStore";
-import { useBabyStore } from "../store/babyStore";
+import { asBabyList, useBabyStore } from "../store/babyStore";
 
 /**
  * Gate that sits between authentication and the main app shell:
@@ -27,7 +27,11 @@ export default function BabyGate({ children }: { children: ReactNode }) {
     api
       .get("/baby/")
       .then((r) => {
-        const list = r.data ?? [];
+        // asBabyList, not `r.data ?? []`: the pre-multi-baby backend answers
+        // with a single object, and passing that straight through crashes the
+        // header. Wrapping it means this build still works against an older
+        // API, showing that one baby.
+        const list = asBabyList(r.data);
         setBabies(list);
         setNeedsSetup(list.length === 0);
         setChecking(false);
