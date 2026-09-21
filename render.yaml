@@ -1,0 +1,73 @@
+# Render Blueprint — backend only.
+# The frontend stays on Hostinger and MySQL stays on Hostinger; this deploys
+# just the FastAPI service. Create it via Render Dashboard → New → Blueprint,
+# pointed at this repo.
+#
+# NOTE ON THE FREE PLAN: Render spins a free web service down after 15 minutes
+# with no inbound traffic, and takes ~1 minute to wake. While asleep the
+# APScheduler jobs in app/main.py do not run and device WebSockets are closed.
+# This was an accepted trade-off. To avoid it, move to a paid instance or add
+# an external cron pinging /health every 10 minutes (uses ~730 of the 750
+# free instance hours per month, leaving almost no headroom).
+
+services:
+  - type: web
+    name: unova-backend
+    runtime: docker
+    plan: free
+    # Closest free region to the Hostinger MySQL host and the Asia/Kolkata
+    # timezone the scheduler runs in.
+    region: singapore
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    # Render probes this after each deploy to decide if the release is live.
+    # app/main.py:619 — a plain 200, no DB round-trip.
+    healthCheckPath: /health
+    branch: master
+    autoDeploy: true
+
+    envVars:
+      # ── Set these in the Render dashboard; never commit them ───────────
+      # sync: false tells Render to prompt for the value and keep it out of git.
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+
+      # ── Non-secret configuration ───────────────────────────────────────
+      # One worker: app/main.py starts a scheduler per process (see Dockerfile).
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "720"
+      - key: REMEMBER_ME_EXPIRE_MINUTES
+        value: "43200"
+      - key: PASSWORD_RESET_EXPIRE_MINUTES
+        value: "60"
+      # Must list every origin the browser app is served from, or CORS blocks
+      # it. No trailing slashes.
+      - key: CORS_ORIGINS
+        sync: false
+      # Base URL used to build password-reset links in outbound email — the
+      # FRONTEND origin, not the API. The default in app/config.py:36 points at
+      # the API host, which is wrong; set it explicitly here.
+      - key: FRONTEND_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_USE_TLS
+        value: "true"
+      - key: EMAIL_FROM
+        sync: false

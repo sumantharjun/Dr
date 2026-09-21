@@ -1,0 +1,19 @@
+# Virtualenv — 122MB, and its binaries are Darwin/arm64, useless in the image
+Dr/
+venv/
+.venv/
+
+# Secrets — Render injects these as env vars; never bake them into a layer
+.env
+.env.*
+
+# Python noise
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Not needed at runtime (alembic/ and scripts/ kept — one-off migrations)
+tests/
+README.md
+.DS_Store
