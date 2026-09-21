@@ -23,7 +23,9 @@ services:
     # Render probes this after each deploy to decide if the release is live.
     # app/main.py:619 — a plain 200, no DB round-trip.
     healthCheckPath: /health
-    branch: master
+    # Deploys mobile-response: master is 10 commits behind and has no render.yaml.
+    # Switch to master once this branch is merged.
+    branch: mobile-response
     autoDeploy: true
 
     envVars:
@@ -33,8 +35,9 @@ services:
         sync: false
       - key: SECRET_KEY
         sync: false
-      - key: SMTP_PASSWORD
-        sync: false
+      # app/utils/email.py:61 — Resend's HTTPS API is tried first and returns on
+      # success, so the SMTP_* vars below are an unused fallback. Resend also
+      # goes over :443, avoiding the SMTP port blocking common on PaaS hosts.
       - key: RESEND_API_KEY
         sync: false
       - key: GOOGLE_CLIENT_ID
@@ -64,7 +67,7 @@ services:
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
-        value: "587"
+        value: "465"
       - key: SMTP_USER
         sync: false
       - key: SMTP_USE_TLS
